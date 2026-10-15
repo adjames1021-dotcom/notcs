@@ -14,7 +14,9 @@ export class WebSocketTransport {
     this.onclose = null;
   }
 
+  /** Opens a (new) connection. Can be called again to reconnect. */
   connect() {
+    this.drop();
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.url);
       ws.binaryType = 'arraybuffer';
@@ -22,7 +24,10 @@ export class WebSocketTransport {
       ws.onopen = () => { opened = true; resolve(); };
       ws.onerror = () => { if (!opened) reject(new Error('Could not connect to ' + this.url)); };
       ws.onmessage = (e) => { if (this.onmessage) this.onmessage(e.data); };
-      ws.onclose = (e) => { if (opened && this.onclose) this.onclose(e); };
+      ws.onclose = (e) => {
+        if (!opened) { reject(new Error(`Could not connect (code ${e.code})`)); return; }
+        if (this.ws === ws && this.onclose) this.onclose(e);
+      };
       this.ws = ws;
     });
   }
@@ -31,8 +36,17 @@ export class WebSocketTransport {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(data);
   }
 
+  /** Closing on purpose: no onclose callback. */
   close() {
-    if (this.ws) this.ws.close();
+    this.drop();
+  }
+
+  drop() {
+    const ws = this.ws;
+    this.ws = null;
+    if (!ws) return;
+    ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
+    try { ws.close(1000, 'bye'); } catch { /* ignore */ }
   }
 }
 

@@ -134,6 +134,11 @@ button.primary:hover { filter: brightness(1.08); }
   background: rgba(0, 0, 0, 0.6); padding: 8px 10px; border-radius: 4px; white-space: pre; color: #cfe;
 }
 #net-graph { position: absolute; right: 16px; top: 8px; font: 12px var(--mono); font-weight: 400; color: rgba(255, 255, 255, 0.75); text-shadow: 0 1px 2px #000; }
+#net-banner {
+  position: absolute; top: 22%; left: 50%; transform: translateX(-50%); padding: 10px 18px; border-radius: 4px;
+  background: rgba(120, 20, 20, 0.85); color: #fff; font-size: 16px; letter-spacing: 0.02em; pointer-events: none;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
 
 @media (max-width: 600px) {
   .settings-grid { grid-template-columns: 1fr; }

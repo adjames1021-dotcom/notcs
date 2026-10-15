@@ -100,6 +100,14 @@ export class NadeView {
   }
 
   onWelcome(msg) {
+    // After a reconnect the welcome lists everything again: start clean.
+    for (const group of [this.smokes, this.fires, this.items, this.projectiles]) {
+      for (const o of group.values()) {
+        if (o.mesh) this.renderer.scene.remove(o.mesh);
+        if (o.obj) this.renderer.scene.remove(o.obj);
+      }
+      group.clear();
+    }
     const st = msg.state || {};
     for (const s of st.smokes || []) this.addSmoke({ nade: s.nade, origin: s.origin, voxels: s.voxels, duration: s.left }, true);
     for (const f of st.fires || []) this.addFire({ nade: f.nade, kind: f.kind, cells: f.cells, duration: f.left }, true);
@@ -269,7 +277,7 @@ export class NadeView {
     const it = { pos: ev.pos.slice(), vel: ev.vel.slice(), resting: !!ev.resting, obj: null, def, spin: Math.random() * Math.PI * 2 };
     this.items.set(ev.item, it);
     this.models.load(def.id, def.cls).then(() => {
-      if (!this.items.has(ev.item)) return;
+      if (this.items.get(ev.item) !== it) return;
       const inst = this.models.instance(def.id);
       if (!inst) return;
       it.obj = inst.object;

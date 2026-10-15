@@ -32,7 +32,6 @@ let renderer = null;
 let mapData = null; // { geo, world }
 let game = null;
 let models = null;
-let reconnectTries = 0;
 
 $('menu-name').value = settings.name || '';
 try {
@@ -106,18 +105,14 @@ async function start(online) {
     game.on('welcome', (msg) => {
       if (online) { try { sessionStorage.setItem('notcs.token.' + lobby, msg.token); } catch { /* ignore */ } }
     });
-    game.on('disconnected', () => {
+    // Dropped connections are retried inside the game (game.js) and your
+    // player waits for you on the server; this only fires if that gave up.
+    game.on('connection', (c) => showNetBanner(c));
+    game.on('disconnected', (message) => {
       if (!game || !game.running) return;
       leave();
-      if (online && reconnectTries < 5) {
-        // Lost connection: try to rejoin the same lobby automatically.
-        // The server recognises our token and gives us our player back.
-        reconnectTries++;
-        status(`Connection lost — reconnecting (${reconnectTries}/5)…`);
-        setTimeout(() => start(true), 1000 * reconnectTries);
-      } else status('Disconnected from server.');
+      status(message || 'Disconnected from server.');
     });
-    game.on('welcome', () => { reconnectTries = 0; });
     game.on('error', (m) => status(m));
     game.start(settings.name || 'Player', token);
     $('menu').classList.add('hidden');
@@ -132,7 +127,17 @@ async function start(online) {
   }
 }
 
+function showNetBanner(c) {
+  const el = $('net-banner');
+  if (c.state === 'connected') { el.classList.add('hidden'); return; }
+  el.textContent = c.state === 'idle'
+    ? 'Disconnected for being idle — rejoining…'
+    : `Connection lost — reconnecting${c.attempt > 1 ? ` (try ${c.attempt})` : ''}…`;
+  el.classList.remove('hidden');
+}
+
 function leave() {
+  $('net-banner').classList.add('hidden');
   if (game) { game.stop(); game = null; }
   if (renderer) renderer.clearDynamic();
   window.__input?.unlock();

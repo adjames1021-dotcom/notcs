@@ -17,6 +17,16 @@ const EPS = COLLISION.DIST_EPSILON;
 const TOL = COLLISION.DIST_EPSILON; // overlap smaller than this counts as "touching"
 const PARALLEL = 1e-6; // movement along an axis smaller than this counts as none
 
+// Prebuilt collision files (see serialize()). Bump SERIAL_FORMAT whenever the
+// constructor's maths changes, so old files are rejected instead of used.
+const SERIAL_MAGIC = 'NOTCSCOL';
+const SERIAL_FORMAT = 1;
+const SERIAL_ARRAYS = [
+  ['v', Float64Array], ['n', Float64Array], ['d', Float64Array], ['bmin', Float64Array], ['bmax', Float64Array],
+  ['ax', Float64Array], ['axMin', Float64Array], ['axMax', Float64Array],
+  ['cellStart', Int32Array], ['cellItems', Int32Array], ['axValid', Uint8Array],
+];
+
 export function createTrace() {
   return {
     fraction: 1, // 0..1 how far along the sweep we got
@@ -129,6 +139,66 @@ export class CollisionWorld {
     this._hitT = 0;
     this._hitN = [0, 0, 0];
     this._startsolid = false;
+  }
+
+  /**
+   * Pack everything the constructor computed into one binary, so the server
+   * can load the map in ~1 ms instead of ~100 ms of CPU (Cloudflare's free
+   * plan only allows 10 ms per request). Made by tools/build-collision.mjs.
+   * Numbers are stored as exact Float64 copies, so a world loaded from this
+   * file traces exactly like one built from the .glb (prediction stays exact).
+   */
+  serialize(meta = {}) {
+    const header = {
+      format: SERIAL_FORMAT, count: this.count, cell: this.cell, gx0: this.gx0, gy0: this.gy0,
+      cols: this.cols, rows: this.rows, bounds: this.bounds, meta, arrays: [],
+    };
+    let offset = 0;
+    for (const [name] of SERIAL_ARRAYS) {
+      const arr = this[name];
+      header.arrays.push({ name, offset, length: arr.length });
+      offset += Math.ceil(arr.byteLength / 8) * 8;
+    }
+    const headerBytes = new TextEncoder().encode(JSON.stringify(header));
+    const headerSize = Math.ceil((16 + headerBytes.length) / 8) * 8;
+    const out = new Uint8Array(headerSize + offset);
+    out.set(new TextEncoder().encode(SERIAL_MAGIC), 0);
+    new DataView(out.buffer).setUint32(8, headerBytes.length, true);
+    out.set(headerBytes, 16);
+    for (let i = 0; i < SERIAL_ARRAYS.length; i++) {
+      const arr = this[SERIAL_ARRAYS[i][0]];
+      out.set(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength), headerSize + header.arrays[i].offset);
+    }
+    return out;
+  }
+
+  /** Inverse of serialize(). Throws if the file is from another version. */
+  static deserialize(buffer) {
+    const bytes = new Uint8Array(buffer);
+    if (new TextDecoder().decode(bytes.subarray(0, 8)) !== SERIAL_MAGIC) throw new Error('not a collision file');
+    const headerLen = new DataView(buffer).getUint32(8, true);
+    const header = JSON.parse(new TextDecoder().decode(bytes.subarray(16, 16 + headerLen)));
+    if (header.format !== SERIAL_FORMAT) throw new Error(`collision file format ${header.format}, expected ${SERIAL_FORMAT}`);
+    const headerSize = Math.ceil((16 + headerLen) / 8) * 8;
+    const w = Object.create(CollisionWorld.prototype);
+    for (let i = 0; i < SERIAL_ARRAYS.length; i++) {
+      const [name, Type] = SERIAL_ARRAYS[i];
+      const a = header.arrays[i];
+      if (a.name !== name) throw new Error('collision file layout mismatch');
+      w[name] = new Type(buffer, headerSize + a.offset, a.length);
+    }
+    w.count = header.count;
+    w.cell = header.cell;
+    w.gx0 = header.gx0; w.gy0 = header.gy0;
+    w.cols = header.cols; w.rows = header.rows;
+    w.bounds = header.bounds;
+    w.meta = header.meta;
+    w.stamp = new Uint32Array(w.count);
+    w.stampId = 0;
+    w._hitT = 0;
+    w._hitN = [0, 0, 0];
+    w._startsolid = false;
+    return w;
   }
 
   cellX(x) { return Math.min(this.cols - 1, Math.max(0, Math.floor((x - this.gx0) / this.cell))); }

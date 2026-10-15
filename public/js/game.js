@@ -4,13 +4,17 @@
 // Every 1/64 s (one tick):
 //   1. read input -> build a usercmd
 //   2. PREDICT: run the shared movement code on it right away (no waiting)
-//   3. send commands to the server, 2 per message
+//   3. send commands to the server, 2 per message (8 while dead: saves cost)
 // When a server snapshot arrives:
 //   4. RECONCILE: compare the server's result for the last command it ran
 //      with what we predicted. If different, rewind to the server's state
 //      and replay the commands it hasn't seen yet.
 //   5. INTERPOLATE other players ~100 ms in the past between snapshots.
 // Rendering runs as fast as the screen allows and blends between ticks.
+//
+// If the connection drops, the game pauses where it is and reconnects by
+// itself (your player is kept for 10 s on the server), instead of going back
+// to the menu.
 // ---------------------------------------------------------------------------
 
 import { TICK_DT, TICK_RATE, PLAYER } from '../shared/constants.js';
@@ -28,7 +32,12 @@ import {
 export const INTERP_DELAY_MS = 100; // how far in the past other players are drawn
 const INTERP_TICKS = (INTERP_DELAY_MS / 1000) * TICK_RATE;
 const CMDS_PER_PACKET = 2;
+const CMDS_PER_PACKET_DEAD = 8; // dead/spectating: input latency doesn't matter
 const MAX_HISTORY = 256;
+const CLOSE_IDLE = 4001; // server: "you were idle" (see shared/server.js)
+const STALL_MS = 5000; // no data for this long while the tab is visible = connection dead
+const RECONNECT_DELAYS_MS = [250, 500, 1000, 2000, 3000];
+const RECONNECT_GIVE_UP_MS = 60000;
 
 export class Game {
   constructor({ renderer, input, transport, world, settings, hud, audio, mode, players }) {
@@ -52,6 +61,7 @@ export class Game {
     this.ws = createWeaponState(); // predicted weapons/inventory
     this.history = []; // [{ cmd, state, ws }] commands the server hasn't confirmed
     this.cmdNum = 0;
+    this.cmdsPerPacket = CMDS_PER_PACKET; // the server can change it (welcome)
     this.outBatch = [];
     this.smoothOffset = [0, 0, 0]; // hides small prediction corrections
     this.hudState = { health: 0, armor: 0, money: 0, helmet: false, defuser: false, team: 0 };
@@ -73,6 +83,17 @@ export class Game {
     this.statWindow = { t: 0, frames: 0, snaps: 0, bytes: 0, out: 0 };
     this.debug = false;
     this.listeners = {};
+
+    // --- connection ---
+    this.connState = 'connected'; // 'connected' | 'reconnecting' | 'idle'
+    this.joinInfo = null;
+    this.lastMessageAt = 0;
+    this.reconnectAttempt = 0;
+    this.reconnectTimer = null;
+    this.lostAt = 0;
+    this.kickReason = null;
+    this.stats.reconnects = 0;
+    this.stats.lastClose = '';
   }
 
   on(name, fn) { (this.listeners[name] || (this.listeners[name] = [])).push(fn); }
@@ -81,10 +102,12 @@ export class Game {
   // ---- connection -------------------------------------------------------------------
   start(name, lobbyToken) {
     this.transport.onmessage = (data) => this.onMessage(data);
-    this.transport.onclose = () => this.emit('disconnected');
-    this.transport.send(JSON.stringify({ type: 'join', name, token: lobbyToken || undefined }));
+    this.transport.onclose = (e) => this.onConnectionLost(e);
+    this.joinInfo = { name, token: lobbyToken || undefined };
+    this.sendJoin();
     this.running = true;
     this.lastFrame = performance.now();
+    this.lastMessageAt = this.lastFrame;
     const loop = (t) => {
       if (!this.running) return;
       this.frame(t);
@@ -95,10 +118,107 @@ export class Game {
 
   stop() {
     this.running = false;
+    clearTimeout(this.reconnectTimer);
+    if (this.onVisible) document.removeEventListener('visibilitychange', this.onVisible);
     this.transport.close();
   }
 
+  sendJoin() {
+    this.transport.send(JSON.stringify({ type: 'join', name: this.joinInfo.name, token: this.joinInfo.token }));
+  }
+
+  // ---- losing and regaining the connection -------------------------------------------
+  onConnectionLost(e = {}) {
+    if (!this.running) return;
+    if (this.mode !== 'online') { this.emit('disconnected', 'Disconnected.'); return; }
+    const code = e.code ?? 0;
+    if (this.connState === 'connected') {
+      this.lostAt = performance.now();
+      this.reconnectAttempt = 0;
+      this.stats.reconnects++;
+      this.stats.lastClose = `code ${code}${e.reason ? ' (' + e.reason + ')' : ''}`;
+      console.warn(`[net] connection lost: ${this.stats.lastClose}`);
+    }
+    if (code === CLOSE_IDLE || this.kickReason === 'idle') {
+      // The tab was in the background for a minute. Rejoin when it's back.
+      this.kickReason = null;
+      this.connState = 'idle';
+      this.emit('connection', { state: 'idle' });
+      this.onVisible = () => {
+        if (document.visibilityState !== 'visible' || this.connState !== 'idle') return;
+        document.removeEventListener('visibilitychange', this.onVisible);
+        this.lostAt = performance.now();
+        this.tryReconnect();
+      };
+      document.addEventListener('visibilitychange', this.onVisible);
+      this.onVisible();
+      return;
+    }
+    this.connState = 'reconnecting';
+    this.scheduleReconnect();
+  }
+
+  scheduleReconnect() {
+    clearTimeout(this.reconnectTimer);
+    if (!this.running) return;
+    if (performance.now() - this.lostAt > RECONNECT_GIVE_UP_MS) {
+      this.emit('disconnected', `Lost connection to the server (${this.stats.lastClose}).`);
+      return;
+    }
+    const delay = RECONNECT_DELAYS_MS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
+    this.reconnectAttempt++;
+    this.emit('connection', { state: 'reconnecting', attempt: this.reconnectAttempt, lastClose: this.stats.lastClose });
+    this.reconnectTimer = setTimeout(() => this.tryReconnect(), delay);
+  }
+
+  async tryReconnect() {
+    if (!this.running) return;
+    this.connState = 'reconnecting';
+    try {
+      await this.transport.connect();
+    } catch {
+      this.scheduleReconnect();
+      return;
+    }
+    if (!this.running) { this.transport.close(); return; }
+    this.lastMessageAt = performance.now();
+    this.sendJoin(); // the server's 'welcome' finishes the reconnect (onWelcome)
+  }
+
+  /** First join and every rejoin. */
+  onWelcome(msg) {
+    const rejoin = this.localId !== 0;
+    this.localId = msg.id;
+    if (this.joinInfo) this.joinInfo.token = msg.token;
+    // Carry on numbering commands where the server's copy of us left off.
+    this.cmdNum = Math.max(this.cmdNum, msg.cmdBase || 0);
+    if (msg.cmdsPerMessage) this.cmdsPerPacket = msg.cmdsPerMessage;
+    this.history.length = 0;
+    this.outBatch = [];
+    this.cmdSendTime.clear();
+    this.lastAck = -1;
+    this.lastServer = null;
+    this.lastServerWs = null;
+    this.serverTick = msg.tick;
+    this.serverTickEst = msg.tick;
+    this.tickEstReady = true;
+    if (rejoin) {
+      for (const id of this.entities.keys()) this.playersView?.remove(id);
+      this.entities.clear();
+      this.roster.clear();
+    }
+    for (const p of msg.players) this.roster.set(p.id, p);
+    const wasLost = this.connState !== 'connected';
+    this.connState = 'connected';
+    this.reconnectAttempt = 0;
+    if (wasLost) {
+      console.log(`[net] reconnected after ${Math.round(performance.now() - this.lostAt)} ms`);
+      this.emit('connection', { state: 'connected' });
+    }
+  }
+
   onMessage(data) {
+    this.lastMessageAt = performance.now();
     if (typeof data === 'string') {
       let msg;
       try { msg = JSON.parse(data); } catch { return; }
@@ -114,12 +234,11 @@ export class Game {
   onJson(msg) {
     switch (msg.type) {
       case 'welcome':
-        this.localId = msg.id;
-        this.serverTick = msg.tick;
-        this.serverTickEst = msg.tick;
-        this.tickEstReady = true;
-        for (const p of msg.players) this.roster.set(p.id, p);
+        this.onWelcome(msg);
         this.emit('welcome', msg);
+        break;
+      case 'kicked':
+        this.kickReason = msg.reason;
         break;
       case 'ev':
         for (const ev of msg.list) this.onEvent(ev);
@@ -173,6 +292,7 @@ export class Game {
   // ---- snapshots + reconciliation -----------------------------------------------------
   onSnapshot(r) {
     const tick = r.u32();
+    if (tick < this.serverTick) return; // stale (never happens on an ordered connection)
     const ack = r.u32();
     const flags = r.u8();
     const server = readSchema(r, createPlayerState(), MOVE_SCHEMA);
@@ -327,6 +447,13 @@ export class Game {
     if (dt > 0.25) dt = 0.25; // tab was in the background
     this.accumulator += dt;
     this.serverTickEst += dt * TICK_RATE;
+    if (this.mode === 'online' && this.connState === 'connected' && now - this.lastMessageAt > STALL_MS &&
+      document.visibilityState === 'visible') {
+      // Nothing from the server for 5 s: the connection is dead even if the
+      // browser hasn't noticed yet. Drop it and reconnect.
+      this.transport.close();
+      this.onConnectionLost({ code: 0, reason: 'no data from server' });
+    }
     while (this.accumulator >= TICK_DT) {
       this.accumulator -= TICK_DT;
       this.tick();
@@ -340,7 +467,7 @@ export class Game {
   }
 
   tick() {
-    if (!this.localId) return;
+    if (!this.localId || this.connState !== 'connected') return; // paused while reconnecting
     const cmd = createCmd();
     cmd.num = ++this.cmdNum;
     cmd.buttons = this.input.sampleButtons();
@@ -363,7 +490,7 @@ export class Game {
 
     this.outBatch.push(cmd);
     this.cmdSendTime.set(cmd.num, performance.now());
-    if (this.outBatch.length >= CMDS_PER_PACKET) {
+    if (this.outBatch.length >= (this.alive ? this.cmdsPerPacket : CMDS_PER_PACKET_DEAD)) {
       this.transport.send(encodeCmds(this.outBatch));
       this.outBatch = [];
       this.statWindow.out++;

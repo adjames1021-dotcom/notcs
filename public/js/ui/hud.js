@@ -75,7 +75,8 @@ export class Hud {
         `snapshots ${s.snapRate ?? 0}/s   in ${s.kbIn ?? 0} KB/s   out ${s.msgsOut ?? 0} msg/s\n` +
         `prediction corrections ${s.corrections}   (${s.lastMismatch || "-"})\n` +
         `last error ${s.lastError.toFixed(4)}   max ${s.maxError.toFixed(4)}\n` +
-        `players ${game.entities.size + 1}   interp ${Math.round(game.interpDelayMs ?? 100)} ms`;
+        `players ${game.entities.size + 1}   interp ${Math.round(game.interpDelayMs ?? 100)} ms\n` +
+        `reconnects ${s.reconnects || 0}${s.lastClose ? '   last drop: ' + s.lastClose : ''}`;
       this.set('debug', this.el.debug, text);
     }
   }

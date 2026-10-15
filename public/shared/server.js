@@ -13,9 +13,20 @@ import {
 import { TICK_RATE } from './constants.js';
 
 const MAX_TICKS_PER_LOOP = 5;
+// No input for this long (e.g. the game tab is in the background, so the
+// browser stops running it) = disconnected, so a forgotten tab doesn't keep a
+// lobby running (and billing) all day. The client rejoins when you come back.
+const IDLE_KICK_SECONDS = 60;
+export const CLOSE_IDLE = 4001;
 
 export class MatchServer {
-  constructor({ world, map, mode = 'defusal', now = () => Date.now(), log = () => {}, options = {} }) {
+  /**
+   * @param timerSlackMs  0 = tick on a timer (Practice). Online, ticks run when
+   *   input arrives and the timer only fires if no input came for this long.
+   */
+  constructor({
+    world, map, mode = 'defusal', now = () => Date.now(), log = () => {}, options = {}, timerSlackMs = 0, cmdsPerMessage = 2,
+  }) {
     this.match = new Match({ world, map, mode, log, options });
     this.sessions = new Set();
     this.now = now;
@@ -24,6 +35,9 @@ export class MatchServer {
     this.timer = null;
     this.tickMs = 1000 / TICK_RATE;
     this.nextTime = 0;
+    this.timerSlackMs = timerSlackMs;
+    this.cmdsPerMessage = Math.max(1, Math.min(8, Math.round(cmdsPerMessage)));
+    this.idleKick = mode !== 'practice';
     this.onEmpty = null; // called when the last player leaves
   }
 
@@ -72,7 +86,10 @@ export class MatchServer {
     const ab = data instanceof ArrayBuffer ? data : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
     const r = newReader(ab);
     const type = r.u8();
-    if (type === MSG.CMDS) this.match.queueCmds(p, decodeCmds(r));
+    if (type === MSG.CMDS) {
+      this.match.queueCmds(p, decodeCmds(r));
+      if (this.timerSlackMs > 0) this.runDue(); // tick now if one is due (see timerSlackMs)
+    }
   }
 
   handleText(session, msg) {
@@ -88,6 +105,7 @@ export class MatchServer {
         // A reconnect: kick any older socket still attached to this player.
         for (const s of this.sessions) if (s !== session && s.player === p) { s.player = null; try { s.conn.close(); } catch { /* ignore */ } }
         m.reconnect(p);
+        this.log(`player ${p.id} reconnected`);
       } else {
         const team = msg.team === 'T' ? TEAM.T : msg.team === 'CT' ? TEAM.CT : msg.team === 'SPEC' ? TEAM.SPEC : 0;
         const token = typeof msg.token === 'string' && msg.token.length >= 8 ? msg.token.slice(0, 64) : randomToken();
@@ -104,6 +122,11 @@ export class MatchServer {
         id: p.id,
         token: p.token,
         tick: m.tick,
+        // a rejoining client continues numbering its commands from here, so
+        // the server doesn't throw away its input as "old" (and weapon timers,
+        // which count in commands, carry on)
+        cmdBase: p.lastCmdNum,
+        cmdsPerMessage: this.cmdsPerMessage,
         tickRate: TICK_RATE,
         mode: m.mode,
         map: m.map.name,
@@ -156,12 +179,19 @@ export class MatchServer {
 
   schedule() {
     if (!this.running) return;
-    const delay = Math.max(0, this.nextTime - this.now());
+    const delay = Math.max(0, this.nextTime - this.now()) + this.timerSlackMs;
     this.timer = setTimeout(() => this.loop(), delay);
   }
 
   loop() {
     this.timer = null;
+    if (!this.running) return;
+    this.runDue();
+    this.schedule();
+  }
+
+  /** Run every tick that is due by the clock (called by the timer and on input). */
+  runDue() {
     if (!this.running) return;
     const now = this.now();
     let n = 0;
@@ -175,7 +205,19 @@ export class MatchServer {
       this.match.grantTicks(Math.floor((now - this.nextTime) / this.tickMs));
       this.nextTime = now;
     }
-    this.schedule();
+  }
+
+  /** Disconnect players whose game has sent nothing for IDLE_KICK_SECONDS. */
+  kickIdle() {
+    const m = this.match;
+    for (const s of this.sessions) {
+      const p = s.player;
+      if (!p || m.tick - (p.lastInputTick ?? m.tick) < IDLE_KICK_SECONDS * TICK_RATE) continue;
+      this.log(`player ${p.id} idle for ${IDLE_KICK_SECONDS} s, disconnecting`);
+      this.send(s, JSON.stringify({ type: 'kicked', reason: 'idle' }));
+      try { s.conn.close(CLOSE_IDLE, 'idle'); } catch { /* ignore */ }
+      this.handleClose(s);
+    }
   }
 
   /** One server tick: simulate, then send each client its snapshot. */
@@ -185,6 +227,7 @@ export class MatchServer {
     for (const s of this.sessions) {
       if (s.chatTokens < 5) s.chatTokens = Math.min(5, s.chatTokens + 1 / (TICK_RATE * 2));
     }
+    if (this.idleKick && m.tick % TICK_RATE === 0) this.kickIdle();
     const events = m.takeEvents();
     const sendScores = m.tick % 32 === 0;
     const states = new Map();

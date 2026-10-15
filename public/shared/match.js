@@ -31,6 +31,11 @@ const MAX_QUEUED_CMDS = 128; // drop anything beyond this (flooding)
 const CMD_BURST = 32; // ticks of input a lagging client may catch up at once (anti speed-hack budget)
 const LAG_COMP_TICKS = TICK_RATE; // keep ~1 s of hitbox history
 const MAX_UNLAG_TICKS = TICK_RATE; // never rewind more than this (anti-cheat)
+// A player whose connection drops keeps standing where they were for this
+// long, so a quick automatic reconnect doesn't cost them their life.
+const RECONNECT_GRACE_TICKS = 10 * TICK_RATE;
+// ...and is removed from the lobby (freeing the slot) after this long.
+const REMOVE_AFTER_TICKS = 180 * TICK_RATE;
 
 export class Match {
   /**
@@ -97,6 +102,8 @@ export class Match {
       money: 800,
       cmdQueue: [],
       lastCmdNum: 0,
+      lastInputTick: this.tick,
+      disconnectTick: 0,
       lastButtons: 0,
       yaw: 0,
       pitch: 0,
@@ -159,10 +166,11 @@ export class Match {
     this.emit({ type: 'leave', id: p.id });
   }
 
+  /** Connection lost: they stay in the world for RECONNECT_GRACE_TICKS (see step()). */
   disconnect(p) {
     p.connected = false;
+    p.disconnectTick = this.tick;
     p.cmdQueue.length = 0;
-    if (p.alive) this.killPlayer(p, null, 'disconnect', { silent: true });
     this.emit({ type: 'disconnect', id: p.id });
   }
 
@@ -171,6 +179,7 @@ export class Match {
     p.cmdQueue.length = 0;
     p.netCache.clear();
     p.cmdTokens = CMD_BURST;
+    p.lastInputTick = this.tick;
     this.emit({ type: 'reconnect', id: p.id });
     if (p.team !== TEAM.SPEC && !p.alive && this.hook('canSpawnNow', p) !== false) this.spawnPlayer(p);
   }
@@ -251,6 +260,7 @@ export class Match {
   canDamage(attacker, victim) {
     if (!attacker || attacker === victim) return true;
     if (victim.dummy || attacker.dummy || this.mode === 'practice') return true;
+    if (this.mode === 'deathmatch') return true; // CS2 deathmatch is free-for-all
     if (attacker.team !== victim.team) return true;
     return !!this.friendlyFire;
   }
@@ -316,6 +326,7 @@ export class Match {
 
   // ---- input ---------------------------------------------------------------------
   queueCmds(p, cmds) {
+    p.lastInputTick = this.tick;
     for (const c of cmds) {
       if (c.num <= p.lastCmdNum) continue; // duplicate / old
       const last = p.cmdQueue.length ? p.cmdQueue[p.cmdQueue.length - 1].num : p.lastCmdNum;
@@ -567,7 +578,7 @@ export class Match {
     this.tick++;
     for (const p of this.players.values()) {
       if (p.dummy) { this.runDummy(p); continue; }
-      if (!p.connected) continue;
+      if (!p.connected) { this.whileDisconnected(p); continue; }
       p.cmdTokens = Math.min(CMD_BURST, p.cmdTokens + 1);
       // Normally run 1 command per tick; catch up if the client's queue grew.
       let n = p.cmdQueue.length > 4 ? p.cmdQueue.length - 2 : Math.min(1, p.cmdQueue.length);
@@ -584,6 +595,19 @@ export class Match {
       if (!p.alive && p.team !== TEAM.SPEC && this.tick >= p.respawnAt && (p.connected || p.dummy)) this.spawnPlayer(p);
     }
     this.recordHistory();
+  }
+
+  /** A disconnected player stands still (with gravity) until the grace period ends. */
+  whileDisconnected(p) {
+    const gone = this.tick - p.disconnectTick;
+    if (gone > REMOVE_AFTER_TICKS) { this.removePlayer(p); return; }
+    if (!p.alive) return;
+    if (gone > RECONNECT_GRACE_TICKS) { this.killPlayer(p, null, 'disconnect', { silent: true }); return; }
+    const cmd = createCmd();
+    cmd.num = p.lastCmdNum; // not a real command: weapon timers don't move
+    cmd.yaw = p.yaw;
+    cmd.pitch = p.pitch;
+    playerMove(p.ps, cmd, { world: this.world, dt: TICK_DT, maxSpeed: weaponMaxSpeed(p.ws), frozen: this.isFrozen(p), boxes: this.playerBoxes(p) });
   }
 
   /** The server skipped ticks (it was busy): give everyone that time back. */
