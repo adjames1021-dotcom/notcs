@@ -9,7 +9,7 @@
 import { THREE } from './renderer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { WEAPON_MODELS, MODEL_DEFAULTS } from '../../config/models.js';
+import { WEAPON_MODELS, MODEL_DEFAULTS, PLAYER_MODELS } from '../../config/models.js';
 
 const AXES = {
   '+x': [1, 0, 0], '-x': [-1, 0, 0],
@@ -54,6 +54,40 @@ export class ModelLibrary {
       .then((entry) => { this.ready.set(id, entry); return entry; });
     this.cache.set(id, p);
     return p;
+  }
+
+  /**
+   * Player model for a team ('T' or 'CT'), scaled to 72 units tall with the
+   * feet at 0 and facing +X. Resolves to null if there's no model file.
+   */
+  loadPlayer(team) {
+    const key = 'player:' + team;
+    if (this.cache.has(key)) return this.cache.get(key);
+    const file = team.toLowerCase();
+    const p = this.manifest.then((m) => {
+      const custom = PLAYER_MODELS[team];
+      if (!custom && !(m && (m.players || []).includes(file))) return null;
+      const cfg = { ...MODEL_DEFAULTS, file: `/models/players/${file}.glb`, ...(custom || {}) };
+      return this.loader.loadAsync(cfg.file).then((gltf) => {
+        const entry = normalize(gltf.scene, { ...cfg, scale: cfg.scale === 'auto' ? 1 : cfg.scale });
+        // scale to player height and stand on the floor
+        const height = entry.size[2] || 1;
+        const s = cfg.scale === 'auto' || !cfg.scale ? 72 / height : 1;
+        const wrap = new THREE.Group();
+        entry.object.scale.setScalar(s);
+        entry.object.position.z = (height / 2) * s;
+        wrap.add(entry.object);
+        return { object: wrap };
+      });
+    }).catch((err) => { console.warn(`[models] player ${team}: ${err.message || err}`); return null; })
+      .then((entry) => { this.ready.set(key, entry); return entry; });
+    this.cache.set(key, p);
+    return p;
+  }
+
+  playerInstance(team) {
+    const e = this.ready.get('player:' + team);
+    return e ? e.object.clone(true) : null;
   }
 
   /** A new copy of a loaded model (or null if it isn't loaded yet). */

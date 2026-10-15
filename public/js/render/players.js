@@ -45,8 +45,21 @@ export class PlayerViews {
     const gun = box(30, 3, 5, 0x222222); gun.position.set(18, -6, 16);
     hips.add(torso, vest, head, armL, armR, gun);
     body.add(legL, legR, hips);
-    root.userData = { body, legL, legR, hips, head, gun, team, walk: 0, deadT: 0, weapon: -1, weaponObj: null };
+    root.userData = { body, legL, legR, hips, head, gun, team, walk: 0, deadT: 0, weapon: -1, weaponObj: null, custom: null };
     this.renderer.scene.add(root);
+    // Real player model (models/players/t.glb or ct.glb) replaces the blocks.
+    const teamName = team === 2 ? 'CT' : team === 1 ? 'T' : null;
+    if (teamName && this.models) {
+      this.models.loadPlayer(teamName).then((entry) => {
+        if (!entry || root.userData.team !== team) return;
+        const model = this.models.playerInstance(teamName);
+        if (!model) return;
+        model.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        for (const part of [legL, legR, torso, vest, head, armL, armR]) part.visible = false;
+        body.add(model);
+        root.userData.custom = model;
+      });
+    }
     return root;
   }
 
@@ -67,6 +80,7 @@ export class PlayerViews {
     u.legL.scale.z = legH / 36; u.legL.position.z = legH / 2;
     u.legR.scale.z = legH / 36; u.legR.position.z = legH / 2;
     u.hips.position.z = legH;
+    if (u.custom) u.custom.scale.z = 1 - 0.25 * duck; // crouch
     // aim pitch tilts the upper body a little
     u.hips.rotation.y = (s.pitch * Math.PI) / 180 * 0.35;
     // walking animation from horizontal speed
