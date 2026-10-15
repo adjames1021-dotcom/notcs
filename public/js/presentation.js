@@ -160,6 +160,7 @@ export class Presentation {
     this.nades.update(dt);
     this.updateCrosshair(def);
     if (g.buyMenu) g.buyMenu.update();
+    if (g.roundHud) g.roundHud.update();
     if (this.smokeEl && g.viewEye) this.smokeEl.style.opacity = this.nades.cameraInSmoke(g.viewEye) ? '0.85' : '0';
     // hit marker + damage flash
     this.hitmarkerT = Math.max(0, this.hitmarkerT - dt);

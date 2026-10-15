@@ -13,7 +13,7 @@ const MAP = { spawns: { T: [[0, 0, 1, 0]], CT: [[400, 0, 1, 180]] }, devSpawn: [
 
 function arena(...extra) {
   const world = makeWorld(floor(), ...extra);
-  const m = new Match({ world, map: MAP, mode: 'defusal' });
+  const m = new Match({ world, map: MAP, mode: 'sandbox' });
   const a = m.addPlayer({ name: 'A', team: TEAM.T, token: 'aaaaaaaaaa' });
   const b = m.addPlayer({ name: 'B', team: TEAM.CT, token: 'bbbbbbbbbb' });
   for (let i = 0; i < 10; i++) m.step();

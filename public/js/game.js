@@ -205,6 +205,7 @@ export class Game {
 
     this.alive = !!(flags & 1);
     this.frozen = !!(flags & 2);
+    this.weaponsFrozen = !!(flags & 4);
     this.reconcile(ack, server, serverWs);
 
     // other players
@@ -295,7 +296,7 @@ export class Game {
       boxes: this.otherPlayerBoxes(),
     });
     if (!replay) this.onPredictedEvents(ev);
-    const out = processWeapon(ps, ws, cmd, { frozen: this.frozen, oldButtons, playerId: this.localId, weaponOut: (this._wout ||= {}) });
+    const out = processWeapon(ps, ws, cmd, { frozen: this.weaponsFrozen, oldButtons, playerId: this.localId, weaponOut: (this._wout ||= {}) });
     if (!replay) this.onPredictedWeapon(out, ps, ws);
     return ev;
   }

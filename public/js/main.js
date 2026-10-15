@@ -19,6 +19,7 @@ import { ModelLibrary } from './render/models.js';
 import { Presentation } from './presentation.js';
 import { BuyMenu } from './ui/buymenu.js';
 import { Feed } from './ui/feed.js';
+import { RoundHud } from './ui/round.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -97,6 +98,9 @@ async function start(online) {
     window.__feed = window.__feed || new Feed(input);
     window.__buyMenu.attach(game);
     window.__feed.attach(game);
+    window.__round = window.__round || new RoundHud(input);
+    window.__round.attach(game, renderer, models);
+    game.roundHud = window.__round;
     game.buyMenu = window.__buyMenu;
     window.__game = game; // handy for debugging in the browser console
     game.on('welcome', (msg) => {

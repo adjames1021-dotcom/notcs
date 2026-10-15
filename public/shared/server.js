@@ -211,6 +211,7 @@ export class MatchServer {
     let flags = 0;
     if (p.alive) flags |= 1;
     if (m.isFrozen(p)) flags |= 2;
+    if (m.isWeaponFrozen(p)) flags |= 4;
     w.u8(flags);
     writeSchema(w, p.ps, MOVE_SCHEMA);
     if (m.writePredicted) m.writePredicted(w, p);

@@ -161,7 +161,7 @@ test('wallbangs: thin walls reduce damage, thick walls stop bullets', () => {
 
 function duel(attackerWeapon) {
   const world = makeWorld(floor());
-  const m = new Match({ world, map: { spawns: { T: [[0, 0, 1, 0]], CT: [[300, 0, 1, 180]] }, devSpawn: [0, 0, 1, 0] }, mode: 'defusal' });
+  const m = new Match({ world, map: { spawns: { T: [[0, 0, 1, 0]], CT: [[300, 0, 1, 180]] }, devSpawn: [0, 0, 1, 0] }, mode: 'sandbox' });
   const a = m.addPlayer({ name: 'A', team: TEAM.T, token: 'aaaaaaaaaa' });
   const b = m.addPlayer({ name: 'B', team: TEAM.CT, token: 'bbbbbbbbbb' });
   a.ps.pos = [0, 0, 0.05]; b.ps.pos = [300, 0, 0.05];

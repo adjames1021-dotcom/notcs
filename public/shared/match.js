@@ -21,6 +21,7 @@ import { rayPlayer } from './hitboxes.js';
 import { GrenadeSystem } from './grenades.js';
 import { ItemSystem } from './items.js';
 import { ECONOMY, addMoney, killReward, tryBuy, inBox } from './economy.js';
+import { DefusalRules, RULES } from './rules.js';
 
 export const TEAM = { NONE: 0, T: 1, CT: 2, SPEC: 3 };
 export const TEAM_NAME = { 0: 'NONE', 1: 'T', 2: 'CT', 3: 'SPEC' };
@@ -54,6 +55,7 @@ export class Match {
     this.systems = []; // add-ons (grenades, items, round rules) with optional hooks
     this.grenades = this.addSystem(new GrenadeSystem());
     this.items = this.addSystem(new ItemSystem());
+    this.rules = this.mode === 'defusal' ? this.addSystem(new DefusalRules()) : null;
     if (this.mode === 'practice') this.setupPractice();
   }
 
@@ -342,6 +344,10 @@ export class Match {
     return this.hook('isFrozen', p) === true;
   }
 
+  isWeaponFrozen(p) {
+    return this.hook('isWeaponFrozen', p) === true;
+  }
+
   /** Run one usercmd for a player — identical to what the client predicts. */
   runCommand(p, cmd) {
     p.lastCmdNum = cmd.num;
@@ -371,7 +377,7 @@ export class Match {
     if (!p.alive) return;
     if (p.ps.pos[2] < this.world.bounds.min[2] - 2000) { this.killPlayer(p, null, 'world'); return; }
 
-    const wout = processWeapon(p.ps, p.ws, cmd, { frozen, oldButtons, playerId: p.id, weaponOut: (this._wout ||= {}) });
+    const wout = processWeapon(p.ps, p.ws, cmd, { frozen: this.isWeaponFrozen(p), oldButtons, playerId: p.id, weaponOut: (this._wout ||= {}) });
     this.handleWeaponOutput(p, cmd, wout);
   }
 
@@ -631,7 +637,14 @@ export class Match {
 
   /** Everything a player joining mid-game needs to see. */
   publicState() {
-    return { ...this.grenades.publicState(), ...this.items.publicState(), ...(this.hook('publicRoundState') || {}) };
+    return { ...this.grenades.publicState(), ...this.items.publicState(), round: this.rules ? this.rules.publicRoundState() : null };
+  }
+
+  /** Round/score info for the scoreboard and HUD timers. */
+  roundInfo() {
+    if (!this.rules) return null;
+    const r = this.rules.publicRoundState();
+    return { ...r, number: r.round, t: r.scoreT, ct: r.scoreCT, winScore: RULES.WIN_ROUNDS };
   }
 
   /** Scoreboard rows as seen by `viewer` (money only shown for teammates). */
