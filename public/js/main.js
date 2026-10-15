@@ -15,6 +15,8 @@ import { Audio } from './audio.js';
 import { LocalTransport, WebSocketTransport } from './net.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { openSettings, openControls } from './ui/menus.js';
+import { ModelLibrary } from './render/models.js';
+import { Presentation } from './presentation.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -26,6 +28,7 @@ const canvas = $('game');
 let renderer = null;
 let mapData = null; // { geo, world }
 let game = null;
+let models = null;
 
 $('menu-name').value = settings.name || '';
 try {
@@ -78,10 +81,12 @@ async function start(online) {
     status('Connecting…');
     await transport.connect();
     const hud = new Hud(settings);
+    models = models || new ModelLibrary();
     game = new Game({
       renderer, input, transport, world, settings, hud, audio, mode: online ? 'online' : 'practice',
-      players: new PlayerViews(renderer),
+      players: new PlayerViews(renderer, models),
     });
+    game.presentation = new Presentation(game, renderer, models);
     window.__game = game; // handy for debugging in the browser console
     game.on('welcome', (msg) => {
       if (online) { try { sessionStorage.setItem('notcs.token.' + lobby, msg.token); } catch { /* ignore */ } }

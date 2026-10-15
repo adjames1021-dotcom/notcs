@@ -7,6 +7,7 @@
 
 import { THREE } from './renderer.js';
 import { EFLAG } from '../../shared/protocol.js';
+import { weaponByIndex } from '../../shared/weapons.js';
 
 const TEAM_COLORS = {
   1: { body: 0x9c7a4d, legs: 0x5c4a32, head: 0x3a3028, accent: 0xd8b878 }, // T
@@ -44,7 +45,7 @@ export class PlayerViews {
     const gun = box(30, 3, 5, 0x222222); gun.position.set(18, -6, 16);
     hips.add(torso, vest, head, armL, armR, gun);
     body.add(legL, legR, hips);
-    root.userData = { body, legL, legR, hips, head, gun, team, walk: 0, deadT: 0 };
+    root.userData = { body, legL, legR, hips, head, gun, team, walk: 0, deadT: 0, weapon: -1, weaponObj: null };
     this.renderer.scene.add(root);
     return root;
   }
@@ -84,7 +85,33 @@ export class PlayerViews {
       u.body.rotation.y = 0;
       v.visible = true;
     }
+    this.updateWeapon(v, s.weapon);
     void info;
+  }
+
+  /** Show the weapon the player is holding (real model once it's loaded). */
+  updateWeapon(v, index) {
+    const u = v.userData;
+    if (u.weapon === index) return;
+    u.weapon = index;
+    if (u.weaponObj) { u.hips.remove(u.weaponObj); u.weaponObj = null; }
+    const def = weaponByIndex(index);
+    u.gun.visible = !def;
+    if (!def || !this.models) return;
+    this.models.load(def.id, def.cls).then(() => {
+      if (u.weapon !== index) return;
+      const inst = this.models.instance(def.id);
+      if (!inst) return;
+      const o = inst.object;
+      // hold it in front of the chest, barrel forward
+      if (def.cls === 'knife') o.position.set(12, -9, 6);
+      else if (def.cls === 'pistol' || def.cls === 'zeus') o.position.set(17, -4, 16);
+      else if (def.cls === 'grenade' || def.cls === 'c4') o.position.set(10, -9, 8);
+      else o.position.set(10 + inst.length * 0.25, -5, 15);
+      o.traverse((m) => { if (m.isMesh) m.castShadow = true; });
+      u.hips.add(o);
+      u.weaponObj = o;
+    });
   }
 
   remove(id) {

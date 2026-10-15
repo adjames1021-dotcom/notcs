@@ -169,7 +169,11 @@ export class MatchServer {
       this.nextTime += this.tickMs;
       n++;
     }
-    if (now - this.nextTime > 250) this.nextTime = now; // hopelessly behind: skip ahead
+    if (now - this.nextTime > 250) {
+      // hopelessly behind: skip ahead, but let clients catch up their input
+      this.match.grantTicks(Math.floor((now - this.nextTime) / this.tickMs));
+      this.nextTime = now;
+    }
     this.schedule();
   }
 

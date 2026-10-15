@@ -73,7 +73,7 @@ export class Hud {
         `server tick ${game.serverTick}   est ${game.serverTickEst.toFixed(1)}\n` +
         `cmd ${game.cmdNum}   ack ${game.lastAck ?? 0}   unacked ${game.history.length}\n` +
         `snapshots ${s.snapRate ?? 0}/s   in ${s.kbIn ?? 0} KB/s   out ${s.msgsOut ?? 0} msg/s\n` +
-        `prediction corrections ${s.corrections}\n` +
+        `prediction corrections ${s.corrections}   (${s.lastMismatch || "-"})\n` +
         `last error ${s.lastError.toFixed(4)}   max ${s.maxError.toFixed(4)}\n` +
         `players ${game.entities.size + 1}   interp ${Math.round(game.interpDelayMs ?? 100)} ms`;
       this.set('debug', this.el.debug, text);

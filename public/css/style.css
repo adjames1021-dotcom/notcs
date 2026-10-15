@@ -125,7 +125,7 @@ button.primary:hover { filter: brightness(1.08); }
 .kill-row .t { color: var(--t-color); }
 .kill-row .ct { color: var(--ct-color); }
 .kill-row .weapon { color: #ddd; margin: 0 8px; font-weight: 500; }
-#hud-weapons { position: absolute; right: 16px; bottom: 80px; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 13px; opacity: 0.85; }
+#hud-weapons { position: absolute; right: 16px; bottom: 80px; text-align: right; font-size: 13px; font-weight: 500; opacity: 0.85; white-space: pre-line; line-height: 1.6; text-shadow: 0 1px 2px #000; }
 #hud-weapons .slot { background: var(--hud-bg); padding: 3px 9px; border-radius: 3px; font-weight: 500; }
 #hud-weapons .slot.active { color: var(--accent); font-weight: 700; }
 #footer-notice { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); font-size: 10px; color: rgba(255, 255, 255, 0.45); letter-spacing: 1px; font-weight: 600; }
@@ -140,3 +140,23 @@ button.primary:hover { filter: brightness(1.08); }
   .online-row { flex-direction: column; align-items: stretch; }
   .hud-box { font-size: 22px; }
 }
+
+/* sniper scope: black everywhere except a circle, thin cross lines */
+#scope-overlay {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at center, transparent 0, transparent 45vh, rgba(0,0,0,0.92) 45.3vh, #000 46vh);
+}
+#scope-overlay::before, #scope-overlay::after { content: ''; position: absolute; background: #000; }
+#scope-overlay::before { left: 0; right: 0; top: 50%; height: 1px; transform: translateY(-0.5px); }
+#scope-overlay::after { top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-0.5px); }
+#scope-overlay.thin { background: radial-gradient(circle at center, transparent 0, transparent 38vh, rgba(0,0,0,0.85) 38.5vh, rgba(0,0,0,0.92) 60vh); }
+#hitmarker {
+  position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%); opacity: 0;
+  background:
+    linear-gradient(45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, #fff 46%, #fff 54%, transparent 54%);
+  -webkit-mask: radial-gradient(circle, transparent 5px, #000 5.5px);
+  mask: radial-gradient(circle, transparent 5px, #000 5.5px);
+}
+#hitmarker.head { filter: drop-shadow(0 0 2px #f33) brightness(1.2); }
+#hurt-flash { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 0, 0, 0.75) 100%); }

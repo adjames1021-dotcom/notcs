@@ -103,7 +103,8 @@ export class Renderer {
     const v = 2 * Math.atan(Math.tan((BASE_VFOV * Math.PI) / 360) * this.fovScale) * (180 / Math.PI);
     this.camera.fov = v;
     this.camera.updateProjectionMatrix();
-    this.viewCamera.fov = this.settings.viewmodelFov * (BASE_VFOV / 73.74);
+    // CS2's viewmodel_fov (68) is a horizontal angle at 4:3 -> convert to vertical
+    this.viewCamera.fov = 2 * Math.atan(Math.tan((this.settings.viewmodelFov * Math.PI) / 360) * 0.75) * (180 / Math.PI);
     this.viewCamera.updateProjectionMatrix();
   }
 

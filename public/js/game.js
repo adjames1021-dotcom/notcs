@@ -21,6 +21,9 @@ import { createCmd, copyCmd } from '../shared/usercmd.js';
 import {
   MSG, MOVE_SCHEMA, encodeCmds, quantizeCmd, newReader, readSchema, readEntity, EFLAG,
 } from '../shared/protocol.js';
+import {
+  createWeaponState, copyWeaponState, weaponStateError, processWeapon, weaponMaxSpeed, WEAPON_SCHEMA,
+} from '../shared/weaponLogic.js';
 
 export const INTERP_DELAY_MS = 100; // how far in the past other players are drawn
 const INTERP_TICKS = (INTERP_DELAY_MS / 1000) * TICK_RATE;
@@ -46,7 +49,8 @@ export class Game {
     this.team = 0;
     this.pred = createPlayerState();
     this.predPrev = createPlayerState();
-    this.history = []; // [{ cmd, state }] commands the server hasn't confirmed
+    this.ws = createWeaponState(); // predicted weapons/inventory
+    this.history = []; // [{ cmd, state, ws }] commands the server hasn't confirmed
     this.cmdNum = 0;
     this.outBatch = [];
     this.smoothOffset = [0, 0, 0]; // hides small prediction corrections
@@ -172,7 +176,7 @@ export class Game {
     const ack = r.u32();
     const flags = r.u8();
     const server = readSchema(r, createPlayerState(), MOVE_SCHEMA);
-    this.readPredictedExtra(r);
+    const serverWs = readSchema(r, createWeaponState(), WEAPON_SCHEMA);
     const hs = this.hudState;
     hs.health = r.u8();
     hs.armor = r.u8();
@@ -201,7 +205,7 @@ export class Game {
 
     this.alive = !!(flags & 1);
     this.frozen = !!(flags & 2);
-    this.reconcile(ack, server);
+    this.reconcile(ack, server, serverWs);
 
     // other players
     const count = r.u16();
@@ -230,35 +234,43 @@ export class Game {
     return this._store;
   }
 
-  // hooks for later stages (weapons, world entities)
-  readPredictedExtra(r) { void r; }
+  // hook for later stages (world entities like grenades)
   readWorldExtra(r, tick) { void r; void tick; }
 
-  reconcile(ack, server) {
+  reconcile(ack, server, serverWs) {
     // Same command acknowledged again and nothing changed: nothing to do.
-    if (ack === this.lastAck && this.lastServer && playerStateError(server, this.lastServer) === 0) return;
+    if (ack === this.lastAck && this.lastServer && playerStateError(server, this.lastServer) === 0 &&
+      weaponStateError(serverWs, this.lastServerWs) === 0) return;
     this.lastAck = ack;
     this.lastServer = server;
+    this.lastServerWs = serverWs;
     // forget commands the server has already processed
     while (this.history.length && this.history[0].cmd.num < ack) this.history.shift();
     const entry = this.history.length && this.history[0].cmd.num === ack ? this.history.shift() : null;
     if (entry) {
-      const error = playerStateError(entry.state, server);
+      const error = Math.max(playerStateError(entry.state, server), weaponStateError(entry.ws, serverWs) > 1e-9 ? 1 : 0);
       this.stats.lastError = error;
       if (error > this.stats.maxError) this.stats.maxError = error;
       if (error < 1e-6) return; // prediction was perfect
+      this.stats.lastMismatch = describeMismatch(entry, server, serverWs);
+    } else {
+      this.stats.lastMismatch = 'no matching command (join/respawn)';
     }
 
     // Rewind to the server's truth and replay everything it hasn't seen yet.
     this.stats.corrections++;
     const before = this.pred.pos.slice();
     const st = createPlayerState();
+    const ws = createWeaponState();
     copyPlayerState(st, server);
+    copyWeaponState(ws, serverWs);
     for (const h of this.history) {
-      this.simulate(st, h.cmd, true);
+      this.simulate(st, ws, h.cmd, true);
       copyPlayerState(h.state, st);
+      copyWeaponState(h.ws, ws);
     }
     copyPlayerState(this.pred, st);
+    copyWeaponState(this.ws, ws);
     const dx = before[0] - st.pos[0], dy = before[1] - st.pos[1], dz = before[2] - st.pos[2];
     const dist = Math.hypot(dx, dy, dz);
     if (dist < 64) {
@@ -272,20 +284,23 @@ export class Game {
   }
 
   /** One predicted tick for the local player — same code as the server runs. */
-  simulate(ps, cmd, replay) {
-    if (!this.alive) { spectatorMove(ps, cmd); return null; }
+  simulate(ps, ws, cmd, replay) {
+    if (!this.alive) { spectatorMove(ps, cmd); ws.time = cmd.num * TICK_DT; return null; }
+    const oldButtons = ps.oldButtons;
     const ev = playerMove(ps, cmd, {
       world: this.world,
       dt: TICK_DT,
-      maxSpeed: this.localMaxSpeed(),
+      maxSpeed: weaponMaxSpeed(ws),
       frozen: this.frozen,
       boxes: this.otherPlayerBoxes(),
     });
     if (!replay) this.onPredictedEvents(ev);
+    const out = processWeapon(ps, ws, cmd, { frozen: this.frozen, oldButtons, playerId: this.localId, weaponOut: (this._wout ||= {}) });
+    if (!replay) this.onPredictedWeapon(out, ps, ws);
     return ev;
   }
 
-  localMaxSpeed() { return PLAYER.DEFAULT_MAX_SPEED; }
+  onPredictedWeapon(out, ps, ws) { void out; void ps; void ws; }
 
   otherPlayerBoxes() {
     const boxes = [];
@@ -337,8 +352,12 @@ export class Game {
     this.beforeTick(cmd);
 
     copyPlayerState(this.predPrev, this.pred);
-    this.simulate(this.pred, cmd, false);
-    this.history.push({ cmd: copyCmd(createCmd(), cmd), state: copyPlayerState(createPlayerState(), this.pred) });
+    this.simulate(this.pred, this.ws, cmd, false);
+    this.history.push({
+      cmd: copyCmd(createCmd(), cmd),
+      state: copyPlayerState(createPlayerState(), this.pred),
+      ws: copyWeaponState(createWeaponState(), this.ws),
+    });
     if (this.history.length > MAX_HISTORY) this.history.shift();
 
     this.outBatch.push(cmd);
@@ -392,7 +411,8 @@ export class Game {
       ent.render = this.interpolateEntity(ent, rt);
       this.playersView?.update(id, ent.render, this.roster.get(id), dt);
     }
-    this.renderer.setView(eye, this.input.yaw, this.input.pitch);
+    const punch = this.viewPunch ? this.viewPunch() : [0, 0];
+    this.renderer.setView(eye, this.input.yaw + punch[1], this.input.pitch + punch[0]);
     this.audio.setListener(eye, this.input.yaw);
     this.beforeRender(alpha, dt);
     this.renderer.render();
@@ -432,4 +452,20 @@ export function lerpEntity(a, b, t) {
     duck: a.duck + (b.duck - a.duck) * t,
     vel: [a.vel[0] + (b.vel[0] - a.vel[0]) * t, a.vel[1] + (b.vel[1] - a.vel[1]) * t, a.vel[2] + (b.vel[2] - a.vel[2]) * t],
   };
+}
+
+/** Which fields differ between our prediction and the server (debug overlay). */
+function describeMismatch(entry, server, serverWs) {
+  const diffs = [];
+  for (const k of ['onGround', 'ducked', 'duckAmount', 'stamina', 'velocityModifier']) {
+    if (entry.state[k] !== server[k]) diffs.push(k);
+  }
+  for (let i = 0; i < 3; i++) {
+    if (entry.state.pos[i] !== server.pos[i]) { diffs.push('pos'); break; }
+  }
+  for (let i = 0; i < 3; i++) {
+    if (entry.state.vel[i] !== server.vel[i]) { diffs.push('vel'); break; }
+  }
+  for (const [k] of WEAPON_SCHEMA) if (entry.ws[k] !== serverWs[k]) diffs.push('ws.' + k);
+  return diffs.join(', ') || 'tiny';
 }

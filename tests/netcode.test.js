@@ -49,7 +49,10 @@ function setup(latency) {
   const session = server.connect(net.serverConn);
   const input = {
     buttons: 0, yaw: 90, pitch: 0,
-    sampleButtons() { return this.buttons; }, takeSelect: () => 0, takeImpulse: () => 0,
+    selectNext: 0, impulseNext: 0,
+    sampleButtons() { return this.buttons; },
+    takeSelect() { const v = this.selectNext; this.selectNext = 0; return v; },
+    takeImpulse() { const v = this.impulseNext; this.impulseNext = 0; return v; },
   };
   const client = makeClient(world, net.clientTransport, input);
   net.clientTransport.onmessage = (d) => client.onMessage(d);
@@ -93,10 +96,31 @@ test('client bundles 2 ticks of input per message (32 msg/s)', () => {
 test('a server-side teleport is corrected on the client', () => {
   const { server, client, run } = setup(4);
   run(64);
-  const p = [...server.match.players.values()][0];
+  const p = [...server.match.players.values()].find((q) => !q.dummy);
   p.ps.pos = [-544, 2220, -120]; // move them to CT spawn
   p.ps.onGround = false;
   run(40);
   assert.ok(Math.abs(client.pred.pos[0] - p.ps.pos[0]) < 1, `client x ${client.pred.pos[0]} vs server ${p.ps.pos[0]}`);
   assert.ok(Math.abs(client.pred.pos[1] - p.ps.pos[1]) < 1);
+});
+
+test('prediction matches the server while shooting, reloading, switching and knifing', () => {
+  const { client, run } = setup(5);
+  run(80);
+  const base = client.stats.corrections;
+  // spray, release, reload, switch to pistol, tap, knife, back to rifle (Q)
+  run(400, (i, inp) => {
+    inp.yaw = 90 + Math.sin(i / 50) * 40;
+    let b = 0;
+    if (i < 60) b |= 128; // IN.ATTACK
+    if (i === 70) b |= 512; // IN.RELOAD
+    if (i > 250 && i < 300 && i % 10 < 2) b |= 128;
+    if (i > 320 && i < 340) b |= 128;
+    if (i > 345 && i < 350) b |= 256; // IN.ATTACK2
+    inp.buttons = b;
+    inp.selectNext = i === 240 ? 2 : i === 310 ? 3 : 0;
+    inp.impulseNext = i === 360 ? 2 : 0; // last weapon
+  });
+  run(64);
+  assert.equal(client.stats.corrections - base, 0, `corrections ${client.stats.corrections - base}`);
 });

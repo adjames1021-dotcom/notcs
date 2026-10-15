@@ -1,0 +1,23 @@
+{
+  "weapons": [
+    "ak47",
+    "aug",
+    "awp",
+    "bizon",
+    "c4",
+    "cz75a",
+    "deagle",
+    "elite",
+    "g3sg1",
+    "galil",
+    "knife_ct",
+    "knife_t",
+    "m4a4",
+    "mp5sd",
+    "mp7",
+    "mp9",
+    "negev",
+    "usps"
+  ],
+  "players": []
+}
