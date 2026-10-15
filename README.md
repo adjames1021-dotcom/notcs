@@ -80,8 +80,15 @@ You need **Node.js 20 or newer**. Get it from https://nodejs.org (press the
 5. **Play.** Open **http://localhost:8787** in Chrome or Edge.
    - **Practice (offline):** you, the map and target dummies.
    - **Play online:** type a lobby code. Open a second browser tab with the same
-     code to play against yourself. Friends on your Wi-Fi can join using your
-     computer's IP address instead of `localhost`.
+     code to play against yourself.
+
+**Friends on the same Wi-Fi.** Start the server with `npm run lan` instead of
+`npm run dev`. Find your computer's IP address:
+- **Windows:** run `ipconfig` and look for *IPv4 Address*.
+- **Mac:** System Settings → Wi-Fi → Details.
+
+Friends then open `http://YOUR-IP:8787`, for example `http://192.168.1.20:8787`.
+If Windows asks about the firewall, click **Allow**.
 
 Press **Ctrl + C** in the terminal to stop the server.
 
