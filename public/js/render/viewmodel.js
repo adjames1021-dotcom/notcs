@@ -107,9 +107,11 @@ export class Viewmodel {
       else { swingYaw = (p - 0.5) * 90 * a; swingRoll = a * 40; swingX = a * 4; }
     }
     const pos = v.pos, rot = v.rot;
-    const x = pos[0] - this.kick * 1.4 + swingX;
-    const y = pos[1] + bobY + this.sway[0] * 0.6;
-    const z = pos[2] + bobZ - dep * 10 - rl * 4 - this.land * 1.5 + this.sway[1] * 0.5;
+    // grenade: pin pulled = arm drawn back and up
+    this.windup = (this.windup || 0) + ((s.throwing ? 1 : 0) - (this.windup || 0)) * Math.min(1, dt * 10);
+    const x = pos[0] - this.kick * 1.4 + swingX - this.windup * 4;
+    const y = pos[1] + bobY + this.sway[0] * 0.6 + this.windup * 1.5;
+    const z = pos[2] + bobZ - dep * 10 - rl * 4 - this.land * 1.5 + this.sway[1] * 0.5 + this.windup * 3;
     const o = this.current.object;
     o.position.set(x, y, z);
     o.rotation.set(0, 0, 0);

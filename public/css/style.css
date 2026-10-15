@@ -160,3 +160,6 @@ button.primary:hover { filter: brightness(1.08); }
 }
 #hitmarker.head { filter: drop-shadow(0 0 2px #f33) brightness(1.2); }
 #hurt-flash { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 0, 0, 0.75) 100%); }
+
+#flash-overlay { position: absolute; inset: 0; background: #fff; opacity: 0; }
+#smoke-overlay { position: absolute; inset: 0; background: rgba(207, 209, 207, 1); opacity: 0; transition: opacity 0.25s; }

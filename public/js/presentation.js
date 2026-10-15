@@ -6,6 +6,7 @@
 
 import { Viewmodel } from './render/viewmodel.js';
 import { Effects } from './render/effects.js';
+import { NadeView } from './render/nades.js';
 import { WEAPONS, weaponByIndex, RECOIL_SCALE, VIEW_TRACKING } from '../shared/weapons.js';
 import { activeWeapon, activeAmmo, SLOT, FLAG, slotWeapon } from '../shared/weaponLogic.js';
 import { traceBullet } from '../shared/bullets.js';
@@ -21,6 +22,8 @@ export class Presentation {
     this.models = models;
     this.viewmodel = new Viewmodel(renderer, models);
     this.effects = new Effects(renderer);
+    this.nades = new NadeView(game, renderer, this.effects, models);
+    this.smokeEl = $('smoke-overlay');
     this.hitmarkerT = 0;
     this.hurtT = 0;
     this.lastMouse = [0, 0];
@@ -33,7 +36,10 @@ export class Presentation {
     game.on('event', (ev) => this.onEvent(ev));
     game.beforeRender = (alpha, dt) => this.beforeRender(alpha, dt);
     game.updateHud = (hud) => this.updateHud(hud);
-    game.viewPunch = () => [game.ws.punchP * RECOIL_SCALE * VIEW_TRACKING, game.ws.punchY * RECOIL_SCALE * VIEW_TRACKING];
+    game.viewPunch = () => {
+      const sh = this.nades.shakeAngles();
+      return [game.ws.punchP * RECOIL_SCALE * VIEW_TRACKING + sh[0], game.ws.punchY * RECOIL_SCALE * VIEW_TRACKING + sh[1]];
+    };
     game.on('predicted', (ev) => { if (ev.landSpeed > 200) this.viewmodel.onLand(ev.landSpeed); });
   }
 
@@ -147,8 +153,11 @@ export class Presentation {
     this.viewmodel.update({
       dt, speed, onGround: g.pred.onGround, mouseDX: Math.max(-20, Math.min(20, -mdx)), mouseDY: Math.max(-20, Math.min(20, mdy)),
       deploy, reload, scoped: scoped && def.cls === 'sniper', silenced: !!(def && def.silencer && (ammo.flags & FLAG.SILENCER_ON)),
+      throwing: ws.throwState === 1,
     });
     this.effects.update(dt);
+    this.nades.update(dt);
+    if (this.smokeEl && g.viewEye) this.smokeEl.style.opacity = this.nades.cameraInSmoke(g.viewEye) ? '0.85' : '0';
     // hit marker + damage flash
     this.hitmarkerT = Math.max(0, this.hitmarkerT - dt);
     this.hurtT = Math.max(0, this.hurtT - dt * 1.5);

@@ -18,6 +18,8 @@ import {
 import { WEAPONS, HITGROUP } from './weapons.js';
 import { traceBullet, computeDamage } from './bullets.js';
 import { rayPlayer } from './hitboxes.js';
+import { GrenadeSystem } from './grenades.js';
+import { ItemSystem } from './items.js';
 
 export const TEAM = { NONE: 0, T: 1, CT: 2, SPEC: 3 };
 export const TEAM_NAME = { 0: 'NONE', 1: 'T', 2: 'CT', 3: 'SPEC' };
@@ -47,6 +49,8 @@ export class Match {
     this._tr = createTrace();
     this._caps = [];
     this.systems = []; // add-ons (grenades, items, round rules) with optional hooks
+    this.grenades = this.addSystem(new GrenadeSystem());
+    this.items = this.addSystem(new ItemSystem());
     if (this.mode === 'practice') this.setupPractice();
   }
 
@@ -196,6 +200,7 @@ export class Match {
         // Practice: spawn with the stage-3 test weapons and armor.
         giveWeapon(p.ws, 'usps');
         giveWeapon(p.ws, 'ak47');
+        for (const n of ['he', 'flash', 'smoke', 'molotov']) giveWeapon(p.ws, n);
         p.ws.active = SLOT.PRIMARY;
         p.ws.last = SLOT.SECONDARY;
         p.armor = 100;
@@ -585,6 +590,17 @@ export class Match {
   /** Extra predicted state appended to each snapshot (weapons/inventory). */
   writePredicted(w, p) {
     writeSchema(w, p.ws, WEAPON_SCHEMA);
+  }
+
+  /** World entities in every snapshot (flying grenades). */
+  writeWorld(w, p) {
+    void p;
+    this.grenades.writeWorld(w);
+  }
+
+  /** Everything a player joining mid-game needs to see. */
+  publicState() {
+    return { ...this.grenades.publicState(), ...this.items.publicState(), ...(this.hook('publicRoundState') || {}) };
   }
 
   publicInfo() {
