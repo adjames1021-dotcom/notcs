@@ -39,6 +39,14 @@ function checkRow(label, obj, key, onChange) {
   return el('label', { class: 'setting-row' }, [el('span', { text: label }), cb]);
 }
 
+function selectRow(label, obj, key, options, onChange) {
+  const sel = el('select');
+  for (const [v, text] of options) { const o = el('option', { value: v, text }); sel.appendChild(o); }
+  sel.value = obj[key];
+  sel.addEventListener('change', () => { obj[key] = sel.value; onChange(); });
+  return el('label', { class: 'setting-row' }, [el('span', { text: label }), sel]);
+}
+
 export function openSettings(settings, onChange) {
   const box = $('settings');
   box.innerHTML = '';
@@ -71,6 +79,8 @@ export function openSettings(settings, onChange) {
     numberRow('Thickness', c, 'thickness', { min: 0.5, max: 4, step: 0.5 }, changed),
     numberRow('Alpha', c, 'alpha', { min: 0, max: 255, step: 5 }, changed),
     el('label', { class: 'setting-row' }, [el('span', { text: 'Color' }), color]),
+    selectRow('Style', c, 'style', [['static', 'Classic static'], ['dynamic', 'Classic dynamic']], changed),
+    checkRow('Follow recoil', c, 'followRecoil', changed),
     checkRow('Outline', c, 'outline', changed),
     checkRow('Center dot', c, 'dot', changed),
     checkRow('T-style', c, 'tStyle', changed),
@@ -101,20 +111,49 @@ const ACTION_LABELS = {
   teamMenu: 'Choose team',
 };
 
-export function openControls(settings) {
+export function openControls(settings, onChange = () => {}) {
   const box = $('controls');
   box.innerHTML = '';
-  const rows = Object.entries(settings.binds).map(([action, codes]) =>
-    el('tr', {}, [el('td', { text: codes.map((c) => c.replace(/^Key|^Digit/, '')).join(' / ') }), el('td', { text: ACTION_LABELS[action] || action })]));
-  rows.push(el('tr', {}, [el('td', { text: 'Mouse 1 / Mouse 2' }), el('td', { text: 'Shoot / secondary (scope, silencer, burst, knife stab)' })]));
+  let waiting = null;
+  const rows = Object.entries(settings.binds).map(([action, codes]) => {
+    const btn = el('button', { text: codes.map(prettyKey).join(' / ') || '—' });
+    btn.addEventListener('click', () => {
+      if (waiting) waiting.btn.textContent = settings.binds[waiting.action].map(prettyKey).join(' / ');
+      waiting = { action, btn };
+      btn.textContent = 'press a key… (Esc = cancel)';
+    });
+    return el('tr', {}, [el('td', {}, [btn]), el('td', { text: ACTION_LABELS[action] || action })]);
+  });
+  const onKey = (e) => {
+    if (!waiting) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.code !== 'Escape') {
+      // a key can only do one thing: remove it from other actions
+      for (const a of Object.keys(settings.binds)) settings.binds[a] = settings.binds[a].filter((c) => c !== e.code);
+      settings.binds[waiting.action] = [e.code];
+      onChange();
+    }
+    openControls(settings, onChange);
+  };
+  window.addEventListener('keydown', onKey, { capture: true, once: false });
+  rows.push(el('tr', {}, [el('td', { text: 'Mouse 1 / Mouse 2' }), el('td', { text: 'Shoot / secondary (scope, silencer, burst, knife stab, underhand throw)' })]));
   rows.push(el('tr', {}, [el('td', { text: 'Mouse wheel' }), el('td', { text: 'Switch weapon (or jump, see Settings)' })]));
   rows.push(el('tr', {}, [el('td', { text: 'Esc' }), el('td', { text: 'Release mouse / pause' })]));
+  const close = () => { window.removeEventListener('keydown', onKey, { capture: true }); box.classList.add('hidden'); };
   const panel = el('div', { class: 'menu-panel' }, [
     el('h2', { text: 'Controls' }),
+    el('p', { class: 'small-note', text: 'Click a key to change it, then press the new key.' }),
     el('table', { class: 'controls-table' }, rows),
     el('p', { class: 'small-note', text: 'Tip: Ctrl+W can close the browser tab. The game asks for fullscreen keyboard lock to prevent it, and C also crouches.' }),
-    el('div', { class: 'menu-buttons' }, [el('button', { class: 'primary', text: 'Close', onclick: () => box.classList.add('hidden') })]),
+    el('div', { class: 'menu-buttons' }, [el('button', { class: 'primary', text: 'Close', onclick: close })]),
   ]);
   box.appendChild(panel);
   box.classList.remove('hidden');
+  box._cleanup && box._cleanup();
+  box._cleanup = () => window.removeEventListener('keydown', onKey, { capture: true });
+}
+
+function prettyKey(code) {
+  return code.replace(/^Key|^Digit/, '').replace('ControlLeft', 'Ctrl').replace('ShiftLeft', 'Shift').replace('Space', 'Space');
 }

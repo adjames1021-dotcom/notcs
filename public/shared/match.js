@@ -20,6 +20,7 @@ import { traceBullet, computeDamage } from './bullets.js';
 import { rayPlayer } from './hitboxes.js';
 import { GrenadeSystem } from './grenades.js';
 import { ItemSystem } from './items.js';
+import { ECONOMY, addMoney, killReward, tryBuy, inBox } from './economy.js';
 
 export const TEAM = { NONE: 0, T: 1, CT: 2, SPEC: 3 };
 export const TEAM_NAME = { 0: 'NONE', 1: 'T', 2: 'CT', 3: 'SPEC' };
@@ -109,7 +110,7 @@ export class Match {
     if (id < 0) return null;
     const p = this.createPlayer(id, name);
     p.token = token;
-    p.money = this.hook('startMoney', p) ?? 800;
+    p.money = this.hook('startMoney', p) ?? (this.mode === 'practice' ? ECONOMY.PRACTICE_MONEY : ECONOMY.START_MONEY);
     this.players.set(id, p);
     this.emit({ type: 'join', id, name: p.name, team: p.team });
     this.setTeam(p, team || this.autoTeam());
@@ -259,8 +260,15 @@ export class Match {
     if (!p.dummy) p.stats.deaths++;
     let assister = null;
     if (attacker && attacker !== p) {
-      if (attacker.team === p.team && !p.dummy && this.mode !== 'practice') attacker.stats.kills--;
+      const teamKill = attacker.team === p.team && !p.dummy && this.mode !== 'practice';
+      if (teamKill) attacker.stats.kills--;
       else attacker.stats.kills++;
+      // CS2 kill rewards (team kills cost money)
+      if (!attacker.dummy && this.mode !== 'practice') {
+        const amount = teamKill ? ECONOMY.TEAMKILL_PENALTY : killReward(weapon);
+        addMoney(attacker, amount);
+        if (amount) this.emit({ type: 'money', amount, reason: teamKill ? 'Killed a teammate' : `Kill with ${WEAPONS[weapon]?.name || weapon}`, to: attacker.id });
+      }
       if (headshot) attacker.stats.hs++;
       // assist: someone else who did 41+ damage this life (CS rule)
       let best = 0;
@@ -490,6 +498,27 @@ export class Match {
     this.emit({ type: 'knife', id: p.id, kind: k.kind, hitPlayer: victim.id, backstab, except: p.id });
   }
 
+  // ---- buying ----------------------------------------------------------------------------
+  canBuy(p) {
+    if (!p.alive || (p.team !== TEAM.T && p.team !== TEAM.CT)) return false;
+    const rule = this.hook('canBuy', p);
+    if (rule !== undefined) return rule;
+    if (this.mode === 'practice') return true;
+    const zone = this.map.buyzones && this.map.buyzones[this.teamName(p)];
+    return inBox(p.ps.pos, zone);
+  }
+
+  buy(p, item) {
+    if (!this.canBuy(p)) { this.emit({ type: 'buyResult', ok: false, item, reason: 'You can only buy in your buy zone during buy time', to: p.id }); return; }
+    const res = tryBuy(p, item, this.teamName(p));
+    if (res.ok && res.dropped) {
+      const eye = this.eyeOf(p);
+      this.items.spawn(res.dropped.id, res.dropped, [eye[0], eye[1], eye[2] - 20], [p.ps.vel[0], p.ps.vel[1], 80], p.id);
+    }
+    if (res.ok && this.mode === 'practice') p.money = ECONOMY.PRACTICE_MONEY;
+    this.emit({ type: 'buyResult', ok: res.ok, item, reason: res.reason || '', price: res.price || 0, to: p.id });
+  }
+
   // ---- practice mode: target dummies -----------------------------------------------------
   setupPractice() {
     // [x, y, z, yaw, options] — placed around T spawn, facing the player
@@ -601,6 +630,17 @@ export class Match {
   /** Everything a player joining mid-game needs to see. */
   publicState() {
     return { ...this.grenades.publicState(), ...this.items.publicState(), ...(this.hook('publicRoundState') || {}) };
+  }
+
+  /** Scoreboard rows as seen by `viewer` (money only shown for teammates). */
+  scoreboard(viewer) {
+    const rounds = Math.max(1, this.roundsPlayed || 0);
+    return [...this.players.values()].map((p) => ({
+      id: p.id, name: p.name, team: p.team, alive: p.alive, connected: p.connected || !!p.dummy, bot: !!p.dummy,
+      kills: p.stats.kills, deaths: p.stats.deaths, assists: p.stats.assists, score: p.stats.score + p.stats.kills * 2 + p.stats.assists,
+      adr: Math.round(p.stats.damage / rounds), ping: p.dummy ? 0 : p.ping ?? 0,
+      money: viewer && (viewer.team === p.team || this.mode === 'practice') ? p.money : undefined,
+    }));
   }
 
   publicInfo() {

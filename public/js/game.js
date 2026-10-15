@@ -425,6 +425,10 @@ export class Game {
     void dt;
     const w = this.statWindow;
     w.frames++;
+    if (now - (this.lastPingReport || 0) > 2000 && this.localId) {
+      this.lastPingReport = now;
+      this.transport.send(JSON.stringify({ type: 'ping', ping: Math.round(this.ping) }));
+    }
     if (now - w.t >= 1000) {
       const secs = (now - w.t) / 1000;
       this.stats.fps = Math.round(w.frames / secs);

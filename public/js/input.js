@@ -36,6 +36,7 @@ export class Input {
     this.select = 0; // weapon slot requested
     this.wheelJumpTicks = 0;
     this.zoomFovRatio = 1;
+    this.menuCapture = false;
     this.listeners = {}; // action -> callbacks (UI keys like buy menu)
     this.codeToAction = new Map();
     this.rebuildBinds();
@@ -67,6 +68,7 @@ export class Input {
       if (!this.enabled && action !== 'debug') return;
       const bit = ACTION_BUTTON[action];
       if (bit) { this.held |= bit; this.latched |= bit; }
+      if (this.menuCapture && action.startsWith('slot')) return; // buy menu uses the numbers
       if (action === 'lastWeapon') this.impulses.push(IMPULSE.LAST_WEAPON);
       if (action === 'drop') this.impulses.push(IMPULSE.DROP);
       if (action.startsWith('slot')) this.select = Number(action.slice(4));

@@ -8,7 +8,8 @@ import { Viewmodel } from './render/viewmodel.js';
 import { Effects } from './render/effects.js';
 import { NadeView } from './render/nades.js';
 import { WEAPONS, weaponByIndex, RECOIL_SCALE, VIEW_TRACKING } from '../shared/weapons.js';
-import { activeWeapon, activeAmmo, SLOT, FLAG, slotWeapon } from '../shared/weaponLogic.js';
+import { activeWeapon, activeAmmo, SLOT, FLAG, slotWeapon, currentInaccuracy } from '../shared/weaponLogic.js';
+import { BASE_VFOV } from './render/renderer.js';
 import { traceBullet } from '../shared/bullets.js';
 import { rayPlayer } from '../shared/hitboxes.js';
 import { EFLAG } from '../shared/protocol.js';
@@ -157,6 +158,8 @@ export class Presentation {
     });
     this.effects.update(dt);
     this.nades.update(dt);
+    this.updateCrosshair(def);
+    if (g.buyMenu) g.buyMenu.update();
     if (this.smokeEl && g.viewEye) this.smokeEl.style.opacity = this.nades.cameraInSmoke(g.viewEye) ? '0.85' : '0';
     // hit marker + damage flash
     this.hitmarkerT = Math.max(0, this.hitmarkerT - dt);
@@ -164,6 +167,27 @@ export class Presentation {
     if (this.hitEl) { this.hitEl.style.opacity = String(Math.min(1, this.hitmarkerT * 5)); this.hitEl.classList.toggle('head', !!this.hitHead); }
     if (this.hurtEl) this.hurtEl.style.opacity = String(this.hurtT * 0.6);
     void alpha;
+  }
+
+  /** Dynamic crosshair (gap grows with inaccuracy) and recoil-following. */
+  updateCrosshair(def) {
+    const g = this.game;
+    const c = g.settings.crosshair;
+    if (!g.hud) return;
+    const focal = (window.innerHeight / 2) / Math.tan((BASE_VFOV * Math.PI) / 360);
+    let gap = 0;
+    if (c.style === 'dynamic' && def && def.gun && g.alive) {
+      gap = Math.min(80, Math.tan(currentInaccuracy(g.ws, g.pred, def) / 1000) * focal * 0.6);
+    }
+    if (Math.abs(gap - (this._gap ?? -1)) > 0.5) { this._gap = gap; g.hud.redrawCrosshair(gap); }
+    const el = g.hud.el.crosshair;
+    if (c.followRecoil) {
+      // bullets land at view + 1.1x the aim punch relative to the screen centre
+      const k = RECOIL_SCALE * (1 - VIEW_TRACKING);
+      const dx = -Math.tan((g.ws.punchY * k * Math.PI) / 180) * focal;
+      const dy = Math.tan((g.ws.punchP * k * Math.PI) / 180) * focal;
+      el.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px)`;
+    } else if (el.style.transform) el.style.transform = '';
   }
 
   updateHud(hud) {

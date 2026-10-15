@@ -132,7 +132,8 @@ export class MatchServer {
         break;
       }
       case 'ping':
-        this.send(session, JSON.stringify({ type: 'pong', t: msg.t }));
+        if (Number.isFinite(msg.ping)) p.ping = Math.max(0, Math.min(999, Math.round(msg.ping)));
+        if (msg.t !== undefined) this.send(session, JSON.stringify({ type: 'pong', t: msg.t }));
         break;
       default:
         if (m.handleAction) m.handleAction(p, msg);
@@ -185,6 +186,7 @@ export class MatchServer {
       if (s.chatTokens < 5) s.chatTokens = Math.min(5, s.chatTokens + 1 / (TICK_RATE * 2));
     }
     const events = m.takeEvents();
+    const sendScores = m.tick % 32 === 0;
     const states = new Map();
     for (const p of m.players.values()) states.set(p.id, m.entityState(p));
     for (const s of this.sessions) {
@@ -193,6 +195,7 @@ export class MatchServer {
       const mine = events.filter((e) => (e.to === undefined || e.to === s.player.id) && e.except !== s.player.id &&
         (!e.teamOnly || this.sameTeam(e, s.player)));
       if (mine.length) this.send(s, JSON.stringify({ type: 'ev', tick: m.tick, list: mine }));
+      if (sendScores) this.send(s, JSON.stringify({ type: 'scores', players: m.scoreboard(s.player), round: m.roundInfo ? m.roundInfo() : null }));
     }
   }
 

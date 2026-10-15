@@ -17,6 +17,8 @@ import { loadSettings, saveSettings } from './settings.js';
 import { openSettings, openControls } from './ui/menus.js';
 import { ModelLibrary } from './render/models.js';
 import { Presentation } from './presentation.js';
+import { BuyMenu } from './ui/buymenu.js';
+import { Feed } from './ui/feed.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -51,6 +53,7 @@ async function loadMap() {
   status('Preparing graphics…');
   renderer = renderer || new Renderer(canvas, settings);
   await renderer.loadMap(buffer.slice(0), geo);
+  renderer.markStatic();
   mapData = { geo, world };
   return mapData;
 }
@@ -87,6 +90,12 @@ async function start(online) {
       players: new PlayerViews(renderer, models),
     });
     game.presentation = new Presentation(game, renderer, models);
+    // menus are created once and re-attached to each new game
+    window.__buyMenu = window.__buyMenu || new BuyMenu(input);
+    window.__feed = window.__feed || new Feed(input);
+    window.__buyMenu.attach(game);
+    window.__feed.attach(game);
+    game.buyMenu = window.__buyMenu;
     window.__game = game; // handy for debugging in the browser console
     game.on('welcome', (msg) => {
       if (online) { try { sessionStorage.setItem('notcs.token.' + lobby, msg.token); } catch { /* ignore */ } }
@@ -113,6 +122,7 @@ async function start(online) {
 
 function leave() {
   if (game) { game.stop(); game = null; }
+  if (renderer) renderer.clearDynamic();
   window.__input?.unlock();
   $('hud').classList.add('hidden');
   $('paused').classList.add('hidden');
@@ -124,7 +134,7 @@ $('btn-online').addEventListener('click', () => start(true));
 $('menu-lobby').addEventListener('keydown', (e) => { if (e.key === 'Enter') start(true); });
 $('btn-settings').addEventListener('click', () => openSettings(settings, () => applySettings()));
 $('btn-pause-settings').addEventListener('click', () => openSettings(settings, () => applySettings()));
-$('btn-controls').addEventListener('click', () => openControls(settings));
+$('btn-controls').addEventListener('click', () => openControls(settings, () => applySettings()));
 $('btn-resume').addEventListener('click', () => window.__input?.lock());
 $('btn-leave').addEventListener('click', () => leave());
 canvas.addEventListener('click', () => { if (game && !window.__input?.locked) window.__input.lock(); });
@@ -142,7 +152,7 @@ function applySettings() {
 // Pause screen when the mouse is released (Esc).
 document.addEventListener('pointerlockchange', () => {
   const locked = !!document.pointerLockElement;
-  if (game) $('paused').classList.toggle('hidden', locked);
+  if (game) $('paused').classList.toggle('hidden', locked || !!game.menuOpen);
 });
 
 // Safety net: Ctrl+W (crouch + forward) would close the tab in some browsers.

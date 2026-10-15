@@ -22,7 +22,7 @@ export const DEFAULT_SETTINGS = {
   volume: 0.6,
   // Crosshair (CS2-style values)
   crosshair: {
-    style: 4, // 4 = static classic (CS2 default "classic static")
+    style: 'static', // 'static' or 'dynamic' (gap grows when you move/shoot)
     size: 2,
     thickness: 0.5,
     gap: -1,

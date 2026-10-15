@@ -163,3 +163,53 @@ button.primary:hover { filter: brightness(1.08); }
 
 #flash-overlay { position: absolute; inset: 0; background: #fff; opacity: 0; }
 #smoke-overlay { position: absolute; inset: 0; background: rgba(207, 209, 207, 1); opacity: 0; transition: opacity 0.25s; }
+
+/* money pop-up and notices */
+#hud-money-delta { position: absolute; left: 16px; top: calc(45% + 44px); font-size: 15px; opacity: 0; transition: opacity 0.3s; text-shadow: 0 1px 2px #000; }
+#hud-money-delta.show { opacity: 1; }
+#hud-money-delta.plus { color: #8fdc6a; }
+#hud-money-delta.minus { color: var(--danger); }
+#hud-notice { position: absolute; left: 50%; top: 64%; transform: translateX(-50%); font-size: 16px; color: var(--accent); background: rgba(0,0,0,0.6); padding: 6px 14px; border-radius: 4px; opacity: 0; transition: opacity 0.3s; }
+#hud-notice.show { opacity: 1; }
+#killfeed .tag, .chat-row .tag, .sb-panel .tag { font-size: 10px; background: rgba(255,255,255,0.15); padding: 1px 4px; border-radius: 3px; margin-left: 2px; }
+
+/* chat */
+#chat-log { position: absolute; left: 16px; bottom: 90px; width: min(420px, 60vw); font-size: 14px; font-weight: 500; display: flex; flex-direction: column; gap: 2px; text-shadow: 0 1px 2px #000; }
+.chat-row { transition: opacity 1s; }
+.chat-row.old { opacity: 0; }
+.chat-row.system { color: var(--muted); font-style: italic; }
+.chat-row .t { color: var(--t-color); } .chat-row .ct { color: var(--ct-color); }
+#chat-input { position: absolute; left: 16px; bottom: 60px; width: min(420px, 60vw); pointer-events: auto; font: inherit; font-size: 14px; color: var(--text); background: rgba(0,0,0,0.7); border: 1px solid #555; border-radius: 4px; padding: 6px 8px; outline: none; }
+
+/* scoreboard */
+#scoreboard { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.sb-panel { width: min(820px, 96vw); background: rgba(10, 12, 16, 0.88); border-radius: 8px; padding: 14px; font-weight: 500; }
+.sb-round { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.sb-team { margin-bottom: 12px; }
+.sb-title { display: flex; justify-content: space-between; font-weight: 800; font-size: 16px; padding: 4px 6px; border-bottom: 2px solid; }
+.sb-team.ct .sb-title { color: var(--ct-color); border-color: var(--ct-color); }
+.sb-team.t .sb-title { color: var(--t-color); border-color: var(--t-color); }
+.sb-panel table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.sb-panel th { font-size: 11px; color: var(--muted); text-align: right; padding: 4px 6px; font-weight: 600; }
+.sb-panel td { text-align: right; padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.06); font-variant-numeric: tabular-nums; }
+.sb-panel .nm { text-align: left; width: 40%; }
+.sb-panel tr.me { background: rgba(240, 178, 50, 0.12); }
+.sb-panel tr.dead { opacity: 0.5; }
+.sb-spec, .sb-foot { color: var(--muted); font-size: 12px; text-align: center; margin-top: 6px; }
+
+/* buy menu */
+#buymenu { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; background: rgba(0,0,0,0.35); }
+.buy-panel { width: min(1100px, 96vw); max-height: 90vh; overflow-y: auto; background: rgba(12, 14, 18, 0.94); border: 1px solid var(--panel-line); border-radius: 10px; padding: 14px; }
+.buy-head { display: flex; gap: 16px; align-items: baseline; margin-bottom: 10px; font-weight: 800; letter-spacing: 1px; }
+.buy-money { color: #8fdc6a; font-size: 22px; }
+.buy-hint { margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: 0; }
+.buy-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.buy-col.active { outline: 2px solid var(--accent); border-radius: 6px; }
+.buy-cat { font-size: 13px; color: var(--accent); font-weight: 700; padding: 4px 6px; text-transform: uppercase; letter-spacing: 1px; }
+.buy-item { display: flex; width: 100%; gap: 6px; align-items: baseline; text-align: left; font-size: 13px; font-weight: 600; padding: 7px 8px; margin-bottom: 4px; background: #1b2028; }
+.buy-item .num { color: var(--muted); width: 12px; }
+.buy-item .nm { flex: 1; }
+.buy-item .pr { color: #8fdc6a; font-variant-numeric: tabular-nums; }
+.buy-item.poor .pr { color: var(--danger); }
+.buy-item.wrong-team { opacity: 0.3; cursor: not-allowed; }
+@media (max-width: 800px) { .buy-grid { grid-template-columns: repeat(2, 1fr); } }

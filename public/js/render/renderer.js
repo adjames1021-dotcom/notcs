@@ -165,6 +165,19 @@ export class Renderer {
     return root;
   }
 
+  /** Remember what belongs to the map so clearDynamic() can remove the rest. */
+  markStatic() {
+    this.staticObjects = new Set(this.scene.children);
+    this.staticView = new Set(this.viewScene.children);
+  }
+
+  /** Remove everything a finished game added (players, smoke, items...). */
+  clearDynamic() {
+    if (!this.staticObjects) return;
+    for (const o of [...this.scene.children]) if (!this.staticObjects.has(o)) this.scene.remove(o);
+    for (const o of [...this.viewScene.children]) if (!this.staticView.has(o)) this.viewScene.remove(o);
+  }
+
   /** Point the camera from `eye` using Source angles (degrees). */
   setView(eye, yaw, pitch, roll = 0) {
     const y = (yaw * Math.PI) / 180, p = (pitch * Math.PI) / 180;
