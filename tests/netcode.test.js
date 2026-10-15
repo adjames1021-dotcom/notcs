@@ -124,3 +124,73 @@ test('prediction matches the server while shooting, reloading, switching and kni
   run(64);
   assert.equal(client.stats.corrections - base, 0, `corrections ${client.stats.corrections - base}`);
 });
+
+// ---- two real clients over laggy connections --------------------------------------
+function twoClients(latency) {
+  const { world } = loadRealMap();
+  const server = new MatchServer({ world, map: MAP, mode: 'deathmatch' });
+  server.start = () => {};
+  const mk = (name, team) => {
+    const net = fakeNet(latency);
+    const session = server.connect(net.serverConn);
+    const input = {
+      buttons: 0, yaw: 0, pitch: 0, selectNext: 0, impulseNext: 0,
+      sampleButtons() { return this.buttons; },
+      takeSelect() { const v = this.selectNext; this.selectNext = 0; return v; },
+      takeImpulse() { const v = this.impulseNext; this.impulseNext = 0; return v; },
+    };
+    const client = makeClient(world, net.clientTransport, input);
+    net.clientTransport.onmessage = (d) => client.onMessage(d);
+    session.onMessage(JSON.stringify({ type: 'join', name, team }));
+    return { net, session, input, client };
+  };
+  const A = mk('A', 'T'), B = mk('B', 'CT'); // enemies (no friendly fire)
+  let t = 0;
+  const run = (ticks, fn) => {
+    for (let i = 0; i < ticks; i++, t++) {
+      for (const c of [A, B]) { c.net.setNow(t); c.net.deliver(c.net.down, (d) => c.client.onMessage(d)); }
+      if (fn) fn(i);
+      for (const c of [A, B]) c.client.tick();
+      for (const c of [A, B]) c.net.deliver(c.net.up, (d) => c.session.onMessage(d));
+      server.step();
+    }
+  };
+  return { server, A, B, run };
+}
+
+function aimAt(client, ent) {
+  const s = client.interpolateEntity(ent, client.renderTick());
+  const eye = [client.pred.pos[0], client.pred.pos[1], client.pred.pos[2] + 64];
+  const tgt = [s.pos[0], s.pos[1], s.pos[2] + 50];
+  client.input.yaw = Math.atan2(tgt[1] - eye[1], tgt[0] - eye[0]) * 180 / Math.PI;
+  client.input.pitch = -Math.atan2(tgt[2] - eye[2], Math.hypot(tgt[0] - eye[0], tgt[1] - eye[1])) * 180 / Math.PI;
+}
+
+function strafeDuel(latency, lagComp) {
+  const { server, A, B, run } = twoClients(latency);
+  run(64);
+  const pa = [...server.match.players.values()].find((p) => p.name === 'A');
+  const pb = [...server.match.players.values()].find((p) => p.name === 'B');
+  // put them 500 units apart in T spawn, B strafing across A's view
+  pa.ps.pos = [-1272, -840, 128.04]; pb.ps.pos = [-1272, -400, 128.04];
+  pa.ws.active = 2; // pistol
+  run(64, () => { A.input.yaw = 90; });
+  if (!lagComp) server.match.rewoundState = () => null; // turn lag compensation off
+  const entB = () => A.client.entities.get(pb.id);
+  let fired = false;
+  run(96, (i) => {
+    B.input.buttons = (Math.floor(i / 40) % 2 ? 4 : 8); // strafe left/right at full speed
+    if (entB()) aimAt(A.client, entB());
+    A.input.buttons = (!fired && i === 60) ? 128 : 0;
+    if (i === 60) fired = true;
+  });
+  run(32);
+  return pb.health;
+}
+
+test('lag compensation: shots at what you SEE hit, even at ~190 ms ping', () => {
+  const withComp = strafeDuel(6, true);
+  const without = strafeDuel(6, false);
+  assert.ok(withComp < 100, `with lag compensation B should be hit (hp ${withComp})`);
+  assert.equal(without, 100, `without lag compensation the shot should miss (hp ${without})`);
+});

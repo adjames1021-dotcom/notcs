@@ -213,3 +213,5 @@ button.primary:hover { filter: brightness(1.08); }
 .buy-item.poor .pr { color: var(--danger); }
 .buy-item.wrong-team { opacity: 0.3; cursor: not-allowed; }
 @media (max-width: 800px) { .buy-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.mode-field { flex: 0 0 150px; }

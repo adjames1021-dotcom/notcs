@@ -31,6 +31,7 @@ let renderer = null;
 let mapData = null; // { geo, world }
 let game = null;
 let models = null;
+let reconnectTries = 0;
 
 $('menu-name').value = settings.name || '';
 try {
@@ -73,7 +74,8 @@ async function start(online) {
     let token = null;
     if (online) {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      transport = new WebSocketTransport(`${proto}//${location.host}/ws/${encodeURIComponent(lobby)}`);
+      const mode = $('menu-mode').value === 'dm' ? '?mode=dm' : '';
+      transport = new WebSocketTransport(`${proto}//${location.host}/ws/${encodeURIComponent(lobby)}${mode}`);
       try { token = sessionStorage.getItem('notcs.token.' + lobby); } catch { /* ignore */ }
     } else {
       // Practice: run the real server code right here in the page.
@@ -102,10 +104,16 @@ async function start(online) {
     });
     game.on('disconnected', () => {
       if (!game || !game.running) return;
-      status('Disconnected from server.');
       leave();
-      if (online) setTimeout(() => status('Disconnected — press Play online to rejoin (you keep your money/score).'), 50);
+      if (online && reconnectTries < 5) {
+        // Lost connection: try to rejoin the same lobby automatically.
+        // The server recognises our token and gives us our player back.
+        reconnectTries++;
+        status(`Connection lost — reconnecting (${reconnectTries}/5)…`);
+        setTimeout(() => start(true), 1000 * reconnectTries);
+      } else status('Disconnected from server.');
     });
+    game.on('welcome', () => { reconnectTries = 0; });
     game.on('error', (m) => status(m));
     game.start(settings.name || 'Player', token);
     $('menu').classList.add('hidden');

@@ -4,7 +4,22 @@ main = "src/worker.js"
 compatibility_date = "2025-09-01"
 
 # Serve everything in /public (the game) as static files.
+# The worker runs first only for /ws/* (WebSocket connections to lobbies).
 [assets]
 directory = "./public"
 binding = "ASSETS"
 run_worker_first = ["/ws/*"]
+
+# One Durable Object per lobby = one authoritative game server per match.
+[[durable_objects.bindings]]
+name = "MATCH"
+class_name = "MatchRoom"
+
+# Durable Object classes must be declared in a migration. SQLite-backed
+# classes work on Cloudflare's free plan.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MatchRoom"]
+
+[observability]
+enabled = true

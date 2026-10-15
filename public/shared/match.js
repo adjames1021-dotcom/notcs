@@ -41,6 +41,8 @@ export class Match {
     this.world = opts.world;
     this.map = opts.map;
     this.mode = opts.mode || 'defusal';
+    // practice + deathmatch: infinite money, buy anywhere, respawn
+    this.freeBuy = this.mode === 'practice' || this.mode === 'deathmatch';
     this.tick = 0;
     this.players = new Map(); // id -> player
     this.events = []; // gameplay events this tick (sent as JSON)
@@ -110,7 +112,7 @@ export class Match {
     if (id < 0) return null;
     const p = this.createPlayer(id, name);
     p.token = token;
-    p.money = this.hook('startMoney', p) ?? (this.mode === 'practice' ? ECONOMY.PRACTICE_MONEY : ECONOMY.START_MONEY);
+    p.money = this.hook('startMoney', p) ?? (this.freeBuy ? ECONOMY.PRACTICE_MONEY : ECONOMY.START_MONEY);
     this.players.set(id, p);
     this.emit({ type: 'join', id, name: p.name, team: p.team });
     this.setTeam(p, team || this.autoTeam());
@@ -264,7 +266,7 @@ export class Match {
       if (teamKill) attacker.stats.kills--;
       else attacker.stats.kills++;
       // CS2 kill rewards (team kills cost money)
-      if (!attacker.dummy && this.mode !== 'practice') {
+      if (!attacker.dummy && !this.freeBuy) {
         const amount = teamKill ? ECONOMY.TEAMKILL_PENALTY : killReward(weapon);
         addMoney(attacker, amount);
         if (amount) this.emit({ type: 'money', amount, reason: teamKill ? 'Killed a teammate' : `Kill with ${WEAPONS[weapon]?.name || weapon}`, to: attacker.id });
@@ -278,7 +280,7 @@ export class Match {
       }
       if (assister) assister.stats.assists++;
     }
-    p.respawnAt = this.tick + (p.dummy ? TICK_RATE * 3 : this.mode === 'practice' ? TICK_RATE * 2 : Infinity);
+    p.respawnAt = this.tick + (p.dummy ? TICK_RATE * 3 : this.freeBuy ? TICK_RATE * 2 : Infinity);
     this.hook('onKill', p, attacker, weapon, { headshot, assister, ...opts });
     if (!opts.silent) {
       this.emit({
@@ -503,7 +505,7 @@ export class Match {
     if (!p.alive || (p.team !== TEAM.T && p.team !== TEAM.CT)) return false;
     const rule = this.hook('canBuy', p);
     if (rule !== undefined) return rule;
-    if (this.mode === 'practice') return true;
+    if (this.freeBuy) return true;
     const zone = this.map.buyzones && this.map.buyzones[this.teamName(p)];
     return inBox(p.ps.pos, zone);
   }
@@ -515,7 +517,7 @@ export class Match {
       const eye = this.eyeOf(p);
       this.items.spawn(res.dropped.id, res.dropped, [eye[0], eye[1], eye[2] - 20], [p.ps.vel[0], p.ps.vel[1], 80], p.id);
     }
-    if (res.ok && this.mode === 'practice') p.money = ECONOMY.PRACTICE_MONEY;
+    if (res.ok && this.freeBuy) p.money = ECONOMY.PRACTICE_MONEY;
     this.emit({ type: 'buyResult', ok: res.ok, item, reason: res.reason || '', price: res.price || 0, to: p.id });
   }
 

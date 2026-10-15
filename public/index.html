@@ -77,8 +77,15 @@
         <label class="field">Lobby code
           <input id="menu-lobby" maxlength="24" autocomplete="off" placeholder="e.g. friends123">
         </label>
+        <label class="field mode-field">Mode
+          <select id="menu-mode">
+            <option value="defusal">Bomb defusal</option>
+            <option value="dm">Deathmatch</option>
+          </select>
+        </label>
         <button id="btn-online">Play online</button>
       </div>
+      <p class="small-note">Everyone who types the same lobby code joins the same match. The first player's mode choice decides the mode.</p>
 
       <div class="menu-buttons small">
         <button id="btn-settings">Settings</button>
