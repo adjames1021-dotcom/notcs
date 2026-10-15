@@ -218,7 +218,7 @@ export function switchTo(ws, slot) {
   return true;
 }
 
-function bestSlot(ws) {
+export function bestSlot(ws) {
   for (const s of ORDER) if (hasSlot(ws, s)) return s;
   return SLOT.NONE;
 }

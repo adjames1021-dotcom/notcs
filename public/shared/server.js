@@ -147,6 +147,9 @@ export class MatchServer {
       case 'buy':
         if (m.buy && typeof msg.item === 'string') m.buy(p, msg.item);
         break;
+      case 'refund':
+        if (m.refund && typeof msg.item === 'string') m.refund(p, msg.item);
+        break;
       case 'chat': {
         if (session.chatTokens < 1) break;
         session.chatTokens -= 1;

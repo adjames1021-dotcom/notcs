@@ -20,7 +20,7 @@ import { traceBullet, computeDamage } from './bullets.js';
 import { rayPlayer } from './hitboxes.js';
 import { GrenadeSystem } from './grenades.js';
 import { ItemSystem } from './items.js';
-import { ECONOMY, addMoney, killReward, tryBuy, inBox } from './economy.js';
+import { ECONOMY, addMoney, killReward, tryBuy, inBox, buyRecord, refundItem } from './economy.js';
 import { DefusalRules, RULES } from './rules.js';
 
 export const TEAM = { NONE: 0, T: 1, CT: 2, SPEC: 3 };
@@ -206,6 +206,7 @@ export class Match {
     p.alive = true;
     p.health = 100;
     p.damageBy.clear();
+    p.buyLog = []; // purchases that can still be refunded
     if (!keepLoadout) {
       const time = p.ws.time;
       defaultLoadout(p.ws, this.teamName(p) === 'CT' ? 'CT' : 'T');
@@ -529,13 +530,31 @@ export class Match {
 
   buy(p, item) {
     if (!this.canBuy(p)) { this.emit({ type: 'buyResult', ok: false, item, reason: 'You can only buy in your buy zone during buy time', to: p.id }); return; }
+    const before = { armor: p.armor, helmet: p.helmet };
     const res = tryBuy(p, item, this.teamName(p));
+    if (res.ok) (p.buyLog ||= []).push(buyRecord(p, item, res.price, before));
     if (res.ok && res.dropped) {
       const eye = this.eyeOf(p);
       this.items.spawn(res.dropped.id, res.dropped, [eye[0], eye[1], eye[2] - 20], [p.ps.vel[0], p.ps.vel[1], 80], p.id);
     }
     if (res.ok && this.freeBuy) p.money = ECONOMY.PRACTICE_MONEY;
     this.emit({ type: 'buyResult', ok: res.ok, item, reason: res.reason || '', price: res.price || 0, to: p.id });
+  }
+
+  /** CS2 refund: sell back something bought this round, if it's unused. */
+  refund(p, item) {
+    const reply = (ok, reason, price = 0) => this.emit({ type: 'refundResult', ok, item, reason, price, to: p.id });
+    if (!this.canBuy(p)) { reply(false, 'You can only refund in your buy zone during buy time'); return; }
+    const log = p.buyLog || [];
+    let i = log.length - 1;
+    while (i >= 0 && log[i].item !== item) i--;
+    if (i < 0) { reply(false, 'You didn\'t buy that this round'); return; }
+    const rec = log[i];
+    if (!refundItem(p, rec)) { reply(false, 'Used items can\'t be refunded'); return; }
+    log.splice(i, 1);
+    if (this.freeBuy) p.money = ECONOMY.PRACTICE_MONEY;
+    else addMoney(p, rec.price);
+    reply(true, '', rec.price);
   }
 
   // ---- practice mode: target dummies -----------------------------------------------------

@@ -159,3 +159,42 @@ test('halftime after 12 rounds swaps sides and resets money; first to 13 wins', 
   m.step();
   assert.equal(r.phase, PHASE.MATCH_END);
 });
+
+test('CS2 refund: right-click sells back an unused item bought this round', () => {
+  const { m, ts } = game();
+  sec(m, RULES.WARMUP_COUNTDOWN + 0.1); // round 1 freeze time, $800
+  const t = ts[0];
+  m.buy(t, 'p250');
+  assert.equal(t.money, 500);
+  m.buy(t, 'vest'); // $650: not enough money
+  assert.equal(t.money, 500);
+  m.refund(t, 'p250');
+  assert.equal(t.money, 800, 'refund gives the full price back');
+  assert.equal(t.ws.sec, 0, 'the P250 is gone');
+  m.refund(t, 'p250');
+  assert.equal(t.money, 800, 'cannot refund twice');
+  // armor: refundable until it takes damage
+  m.buy(t, 'vest');
+  assert.equal(t.armor, 100);
+  m.refund(t, 'vest');
+  assert.equal(t.money, 800);
+  assert.equal(t.armor, 0);
+});
+
+test('CS2 refund: not after the gun was fired, and not once buy time is over', () => {
+  const { m, ts } = game();
+  sec(m, RULES.WARMUP_COUNTDOWN + 0.1);
+  const t = ts[0];
+  t.money = 5000;
+  m.buy(t, 'deagle');
+  assert.equal(t.money, 4300);
+  sec(m, RULES.FREEZE_TIME + 0.1); // round is live, still inside buy time
+  input(m, t, IN.ATTACK, 2);
+  input(m, t, 0, 40);
+  m.refund(t, 'deagle');
+  assert.equal(t.money, 4300, 'a used gun cannot be refunded');
+  m.buy(t, 'he');
+  sec(m, RULES.BUY_TIME + 1);
+  m.refund(t, 'he');
+  assert.equal(t.money, 4000, 'no refunds after buy time');
+});

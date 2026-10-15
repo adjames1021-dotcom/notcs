@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { WEAPONS, EQUIPMENT, MAX_GRENADES } from './weapons.js';
-import { giveWeapon, grenadeCount, SLOT, switchTo } from './weaponLogic.js';
+import { giveWeapon, grenadeCount, SLOT, switchTo, removeSlot, bestSlot, hasSlot } from './weaponLogic.js';
 
 export const ECONOMY = {
   START_MONEY: 800,
@@ -93,6 +93,55 @@ export function tryBuy(p, item, teamName) {
   if (def.slot === 'primary') switchTo(ws, SLOT.PRIMARY);
   else if (def.slot === 'secondary') switchTo(ws, SLOT.SECONDARY);
   return { ok: true, price: def.price, dropped: res.dropped };
+}
+
+const NADE_SLOT = { he: SLOT.HE, flash: SLOT.FLASH, smoke: SLOT.SMOKE, molotov: SLOT.FIRE, incendiary: SLOT.FIRE, decoy: SLOT.DECOY };
+
+/**
+ * What to remember about a purchase so it can be refunded (CS2: right-click
+ * an item in the buy menu to sell it back while you can still buy).
+ */
+export function buyRecord(p, item, price, before) {
+  return { item, price, prevArmor: before.armor, prevHelmet: before.helmet };
+}
+
+/**
+ * Undo a purchase if the item is still unused. Returns true if it was taken
+ * back (the caller gives the money back).
+ */
+export function refundItem(p, rec) {
+  const ws = p.ws;
+  if (EQUIPMENT[rec.item]) {
+    if (rec.item === 'defuser') {
+      if (!p.defuser) return false;
+      p.defuser = false;
+      return true;
+    }
+    if (p.armor < 100) return false; // it has been shot at
+    p.armor = rec.prevArmor;
+    p.helmet = rec.prevHelmet;
+    return true;
+  }
+  const def = WEAPONS[rec.item];
+  if (!def) return false;
+  let slot;
+  if (def.slot === 'primary') {
+    if (ws.pri !== def.index || ws.priClip !== def.clip || ws.priRes !== def.reserve) return false;
+    slot = SLOT.PRIMARY;
+  } else if (def.slot === 'secondary') {
+    if (ws.sec !== def.index || ws.secClip !== def.clip || ws.secRes !== def.reserve) return false;
+    slot = SLOT.SECONDARY;
+  } else if (def.slot === 'zeus') {
+    if (!ws.zeus || ws.zeusClip !== 1) return false;
+    slot = SLOT.ZEUS;
+  } else if (def.slot === 'grenade') {
+    slot = NADE_SLOT[def.id];
+    if (slot === SLOT.FIRE ? ws.fire !== def.index : !ws[def.id]) return false;
+  } else return false;
+  removeSlot(ws, slot);
+  if (!hasSlot(ws, ws.active)) switchTo(ws, bestSlot(ws));
+  if (!hasSlot(ws, ws.last)) ws.last = SLOT.KNIFE;
+  return true;
 }
 
 /** Is a point inside an axis-aligned box {min, max}? */

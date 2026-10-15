@@ -93,7 +93,7 @@ async function start(online) {
     });
     game.presentation = new Presentation(game, renderer, models);
     // menus are created once and re-attached to each new game
-    window.__buyMenu = window.__buyMenu || new BuyMenu(input);
+    window.__buyMenu = window.__buyMenu || new BuyMenu(input, models);
     window.__feed = window.__feed || new Feed(input);
     window.__buyMenu.attach(game);
     window.__feed.attach(game);

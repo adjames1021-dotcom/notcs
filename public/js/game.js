@@ -189,6 +189,7 @@ export class Game {
   onWelcome(msg) {
     const rejoin = this.localId !== 0;
     this.localId = msg.id;
+    this.serverMode = msg.mode; // 'practice' | 'deathmatch' | 'defusal'
     if (this.joinInfo) this.joinInfo.token = msg.token;
     // Carry on numbering commands where the server's copy of us left off.
     this.cmdNum = Math.max(this.cmdNum, msg.cmdBase || 0);

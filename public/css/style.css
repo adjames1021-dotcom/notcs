@@ -174,7 +174,7 @@ button.primary:hover { filter: brightness(1.08); }
 #hud-money-delta.show { opacity: 1; }
 #hud-money-delta.plus { color: #8fdc6a; }
 #hud-money-delta.minus { color: var(--danger); }
-#hud-notice { position: absolute; left: 50%; top: 64%; transform: translateX(-50%); font-size: 16px; color: var(--accent); background: rgba(0,0,0,0.6); padding: 6px 14px; border-radius: 4px; opacity: 0; transition: opacity 0.3s; }
+#hud-notice { position: absolute; z-index: 30; left: 50%; top: 64%; transform: translateX(-50%); font-size: 16px; color: var(--accent); background: rgba(0,0,0,0.6); padding: 6px 14px; border-radius: 4px; opacity: 0; transition: opacity 0.3s; }
 #hud-notice.show { opacity: 1; }
 #killfeed .tag, .chat-row .tag, .sb-panel .tag { font-size: 10px; background: rgba(255,255,255,0.15); padding: 1px 4px; border-radius: 3px; margin-left: 2px; }
 
@@ -203,21 +203,66 @@ button.primary:hover { filter: brightness(1.08); }
 .sb-spec, .sb-foot { color: var(--muted); font-size: 12px; text-align: center; margin-top: 6px; }
 
 /* buy menu */
-#buymenu { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; background: rgba(0,0,0,0.35); }
-.buy-panel { width: min(1100px, 96vw); max-height: 90vh; overflow-y: auto; background: rgba(12, 14, 18, 0.94); border: 1px solid var(--panel-line); border-radius: 10px; padding: 14px; }
-.buy-head { display: flex; gap: 16px; align-items: baseline; margin-bottom: 10px; font-weight: 800; letter-spacing: 1px; }
-.buy-money { color: #8fdc6a; font-size: 22px; }
-.buy-hint { margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: 0; }
-.buy-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-.buy-col.active { outline: 2px solid var(--accent); border-radius: 6px; }
-.buy-cat { font-size: 13px; color: var(--accent); font-weight: 700; padding: 4px 6px; text-transform: uppercase; letter-spacing: 1px; }
-.buy-item { display: flex; width: 100%; gap: 6px; align-items: baseline; text-align: left; font-size: 13px; font-weight: 600; padding: 7px 8px; margin-bottom: 4px; background: #1b2028; }
-.buy-item .num { color: var(--muted); width: 12px; }
-.buy-item .nm { flex: 1; }
-.buy-item .pr { color: #8fdc6a; font-variant-numeric: tabular-nums; }
-.buy-item.poor .pr { color: var(--danger); }
-.buy-item.wrong-team { opacity: 0.3; cursor: not-allowed; }
-@media (max-width: 800px) { .buy-grid { grid-template-columns: repeat(2, 1fr); } }
+/* ---- buy menu (CS2 layout) ---- */
+#buymenu { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.35), rgba(0,0,0,0.7)); z-index: 20; }
+.bm-panel { --team: var(--t-color); position: relative; width: min(1180px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px; padding: 14px 20px 12px;
+  background: linear-gradient(180deg, rgba(22, 26, 33, 0.94), rgba(12, 14, 18, 0.96));
+  border: 1px solid rgba(255,255,255,0.07); border-top: 2px solid var(--team); box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+.bm-panel.ct { --team: var(--ct-color); }
+.bm-head { display: flex; align-items: center; gap: 16px; }
+.bm-money { font-size: 28px; font-weight: 800; color: #8fdc6a; font-variant-numeric: tabular-nums; letter-spacing: 0.5px; }
+.bm-status { flex: 1; font-size: 14px; font-weight: 600; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.bm-status.blocked { color: var(--danger); }
+.bm-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: var(--text); font-size: 12px;
+  font-weight: 700; letter-spacing: 1.2px; padding: 7px 12px; border-radius: 2px; }
+.bm-btn:hover { background: rgba(255,255,255,0.14); }
+.bm-btn.on { background: var(--team); color: #111; border-color: var(--team); }
+.bm-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.bm-col { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-radius: 3px; transition: background 0.15s; }
+.bm-col.selected { background: rgba(255,255,255,0.05); outline: 1px solid var(--team); }
+.bm-col-head { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase;
+  color: #d9dde2; padding: 2px 2px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 2px; }
+.bm-key { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 2px; background: var(--team); color: #111; font-size: 12px; letter-spacing: 0; }
+.bm-card { --img: clamp(34px, 6.4vh, 64px); position: relative; display: grid; grid-template-columns: 1fr auto; grid-template-rows: var(--img) auto; gap: 2px 6px; padding: 6px 8px 7px;
+  text-align: left; background: linear-gradient(180deg, rgba(48, 55, 66, 0.55), rgba(30, 35, 43, 0.75)); border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 2px; color: var(--text); font-weight: 600; cursor: pointer; transition: background 0.1s, border-color 0.1s, transform 0.1s; }
+.bm-card:hover { background: linear-gradient(180deg, rgba(78, 88, 104, 0.7), rgba(48, 56, 68, 0.85)); border-color: rgba(255,255,255,0.35); }
+.bm-card:active { transform: scale(0.985); }
+.bm-num { position: absolute; left: 6px; top: 4px; font-size: 12px; font-weight: 800; color: rgba(255,255,255,0.55); }
+.bm-img { grid-column: 1 / -1; width: 100%; height: var(--img); object-fit: contain; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.6)); pointer-events: none; }
+.bm-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bm-price { font-size: 13px; color: #8fdc6a; font-variant-numeric: tabular-nums; }
+.bm-card.poor { opacity: 0.55; }
+.bm-card.poor .bm-price { color: var(--danger); }
+.bm-card.owned { border-color: rgba(143, 220, 106, 0.55); box-shadow: inset 3px 0 0 #8fdc6a; }
+.bm-card.current { border-color: var(--team); box-shadow: inset 3px 0 0 var(--team); }
+.bm-tag { position: absolute; right: 6px; top: 4px; font-size: 10px; font-weight: 800; letter-spacing: 1px; color: #8fdc6a; }
+.bm-tag.refund { color: #ffd166; }
+.bm-tag.swap { color: var(--team); }
+.bm-foot { display: grid; grid-template-columns: 1.3fr 1fr; gap: 14px; min-height: 96px; }
+.bm-info, .bm-gear { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 10px 12px; border-radius: 2px; }
+.bm-info-empty { color: var(--muted); font-size: 13px; }
+.bm-info-name { font-size: 16px; font-weight: 800; margin-bottom: 6px; }
+.bm-info-name span { color: #8fdc6a; margin-left: 8px; }
+.bm-stat { position: relative; display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0 4px; color: #c9ced4; }
+.bm-stats { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+.bm-stat b { font-variant-numeric: tabular-nums; }
+.bm-stat i { position: absolute; left: 0; bottom: 1px; height: 2px; background: var(--team); opacity: 0.8; }
+.bm-desc { font-size: 13px; color: #c9ced4; margin-top: 4px; }
+.bm-reward { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.bm-gear-title { font-size: 12px; font-weight: 800; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.bm-gear-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); }
+.bm-gear-row img { height: 40px; max-width: 110px; object-fit: contain; background: rgba(255,255,255,0.04); padding: 3px 6px; border-radius: 2px; }
+.bm-hint { font-size: 12px; color: var(--muted); text-align: center; }
+.bm-picker { position: absolute; inset: 0; background: rgb(13, 15, 20); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.bm-picker-title { display: flex; justify-content: space-between; align-items: center; font-size: 16px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; }
+.bm-picker-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+@media (max-width: 860px) {
+  .bm-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .bm-foot { grid-template-columns: 1fr; }
+}
 
 .mode-field { flex: 0 0 150px; }
 
