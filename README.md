@@ -46,12 +46,18 @@ and at the bottom of the screen while you play.
   - halftime side swap; first to 13 wins
 - **The CS2 economy:** kill rewards per weapon, the loss bonus ladder, and plant
   and defuse rewards.
+- **A CS2-style buy menu:**
+  - five numbered columns (Pistols, Mid-Tier, Rifles, Equipment, Grenades)
+  - pictures made from your weapon models
+  - right-click refunds for anything unused you bought this round
+  - a loadout you can change: pick which weapon sits in each slot
 - **Real netcode:**
   - the server is in charge; your client predicts your own movement and
     shots, then corrects itself against the server
   - other players are shown 100 ms in the past, smoothly
   - lag compensation lets you hit what you see
-  - automatic reconnect
+  - if your connection drops, the game reconnects by itself in under a
+    second, and your player waits for you for 10 seconds
 - **Multiplayer:** each lobby runs on Cloudflare Workers with one Durable Object
   per lobby code.
 - **Practice mode:** works offline against target dummies. It has an option to
@@ -108,7 +114,7 @@ Press **Ctrl + C** in the terminal to stop the server.
 | Mouse wheel | Next/previous weapon (or jump: see Settings) |
 | G | Drop weapon |
 | E | Pick up a weapon you're looking at / plant / defuse |
-| B | Buy menu |
+| B | Buy menu: click, or press the column number then the item number (B 3 2 = 2nd rifle). Right-click an item you bought this round to refund it. |
 | Tab | Scoreboard |
 | M | Choose team |
 | Y / U | Chat / team chat |
@@ -124,7 +130,7 @@ You can change every key in **Controls**.
 
 ## 2. Test each stage
 
-There are **62 automated tests**. They check the numbers that make it feel like
+There are **70 automated tests**. They check the numbers that make it feel like
 CS: speeds, jump height, fall damage, damage values, fire rates, money and
 prediction. Run them with:
 
@@ -140,8 +146,8 @@ Then check each stage by hand:
 | **2. Jump, crouch, air strafe** | Jumps reach ~55 units. Crouch-jump (Space, then Ctrl in the air) gets you onto the tall crates. In the air, hold A or D and turn the mouse the same way to gain speed past 250. Jumping as you land (bhop) caps you at 275. Shift walks silently. Big drops hurt. |
 | **3. Weapons** | Spray the AK at the dummies: the pattern is the same every time. Tap the USP-S. Knife a dummy from behind (right click) for a one-hit backstab. The helmet dummy dies to one AK headshot (111 damage). |
 | **4. All guns and grenades** | Press **B** (free in Practice) and try everything. Grenades: the smoke blocks vision and puts out the molotov, the flash whites you out, and the HE blows a hole in smoke. Drop guns with G and pick them up again. |
-| **5. HUD, buy menu, economy** | **Settings** has sensitivity, crosshair (dynamic or follow-recoil), volume and fake lag. The buy menu greys out the other team's guns. Money shows +$ after a kill. |
-| **6. Multiplayer** | Two tabs, same lobby code, **Deathmatch**. In the second tab, press M to join the other team. Watch the other tab's player move smoothly; F3 shows ping and prediction corrections, which should stay near 0. Close one tab and reopen it: you get your player back. In Practice, set **Settings → Fake latency** to 150 ms; your own movement still responds instantly. |
+| **5. HUD, buy menu, economy** | **Settings** has sensitivity, crosshair (dynamic or follow-recoil), volume and fake lag. Press **B**: the CS2-style menu shows your money and buy time. Buy something, then right-click it to get the money back. Click **LOADOUT** to change which guns are in your menu. Money shows +$ after a kill. |
+| **6. Multiplayer** | Two tabs (or two windows side by side), same lobby code, **Deathmatch**. Deathmatch is free-for-all like CS2, so you can shoot each other whichever team you're on. Watch the other tab's player move smoothly. F3 shows ping, prediction corrections (which should stay near 0) and reconnects. Close one tab and reopen it: you get your player back. In Practice, set **Settings → Fake latency** to 150 ms; your own movement still responds instantly. |
 | **7. Bomb defusal** | Two tabs, same lobby code, **Bomb defusal**, one player per team. Warmup, then round 1 with freeze time. The T has the C4 (key 5): plant at A or B by holding left click, and the CT defuses by holding **E**. |
 
 ## 3. Put it online (Cloudflare) — free
@@ -163,29 +169,64 @@ Then check each stage by hand:
 
 To update the online version later, run `npm run deploy` again.
 
-**What it costs.** This project uses the free plan (Workers and SQLite-backed
-Durable Objects). The free plan has daily usage limits; see
+**What it costs.** The game runs on Cloudflare's **free plan** (Workers and
+SQLite-backed Durable Objects). The free plan never bills you. If you use up a
+daily allowance, lobbies stop working until it resets at midnight UTC. Check
 https://developers.cloudflare.com/durable-objects/platform/pricing/ for the
-current numbers. If you go over, lobbies stop working until the next day; the
-free plan doesn't bill you. The game is built to stay cheap:
+current numbers. At the time of writing:
 
-- **Fewer incoming messages.** Each player sends 2 ticks of input per message,
-  so 32 messages per second. Cloudflare counts 20 incoming WebSocket messages
-  as 1 request.
+| Free daily allowance | What uses it | Roughly how much play that is |
+|---|---|---|
+| 100,000 requests | Players' input: 20 incoming messages count as 1 request. A living player sends 32 messages a second, about 5,800 requests an hour. | About 17 player-hours a day, e.g. 4 friends for 4 hours |
+| 13,000 GB-seconds | Each lobby with someone in it | About 29 lobby-hours a day |
+
+The game keeps these low:
+
+- **Fewer messages.** Living players send 2 ticks of input per message. Dead
+  players and spectators send 8.
 - **Snapshots are free.** The server sends snapshots 64 times per second, and
-  outgoing messages aren't billed.
-- **Empty lobbies sleep.** When the last player leaves, the server stops its
-  64-tick loop so the lobby can shut down.
+  Cloudflare doesn't bill outgoing messages.
+- **Idle players are disconnected.** A tab left in the background for 60
+  seconds is disconnected, so a forgotten tab can't keep a lobby running all
+  day. The game rejoins by itself when you come back.
+- **Empty lobbies sleep.** When the last player leaves, the 64-tick loop
+  stops and the lobby shuts down.
+
+**If you run out of free requests,** open `wrangler.toml` and change
+`INPUT_TICKS_PER_MESSAGE = "2"` to `"4"`, then deploy again. That halves the
+requests and adds about 15 ms of input delay; your own movement still responds
+instantly.
+
+On the **Workers Paid plan** ($5 a month), 10 players for an hour costs about
+a cent.
+
+The game is still free for players either way. The "never paid for" promise
+means nobody is ever charged to play. Hosting costs, if any, are yours.
+
+**Seeing what the server is doing.** In the Cloudflare dashboard, open
+**Workers & Pages → notcs → Logs**. Each lobby start, connection and
+disconnection is one line, with the close code.
 
 **How a lobby works.** The Worker turns the lobby code into a Durable Object
 with `idFromName(code)`, so the same code always reaches the same match.
 
 ## 4. Add or change models
 
-Your models are in `source-models/weapons/`: AK-47, AUG, AWP, PP-Bizon, C4,
-CZ75-Auto, Desert Eagle, Dual Berettas, G3SG1, Galil AR, both knives, M4A4,
-MP5-SD, MP7, MP9, Negev and USP-S. Every other weapon shows a simple box gun
-until you add its model.
+All 18 models you uploaded are in the game, in `source-models/weapons/`:
+AK-47, AUG, AWP, PP-Bizon, C4, CZ75-Auto, Desert Eagle, Dual Berettas, G3SG1,
+Galil AR, both knives, M4A4, MP5-SD, MP7, MP9, Negev and USP-S.
+
+These have **no model yet**. In game they show a simple box gun, and in the buy
+menu a white outline:
+
+- **Pistols:** Glock-18, P2000, P250, Five-SeveN, Tec-9, R8 Revolver
+- **SMGs:** MAC-10, UMP-45, P90
+- **Shotguns:** Nova, XM1014, Sawed-Off, MAG-7
+- **Rifles and snipers:** M249, FAMAS, M4A1-S, SG 553, SSG 08, SCAR-20
+- **Other:** Zeus x27 and all six grenades
+- **Players:** the T and CT player models
+
+The Glock-18 is the T starting pistol, so it's the one you'll notice most.
 
 1. Name the file after the weapon's id and put it in `source-models/weapons/`.
    For example, `m4a1s.glb` or `glock.glb`. The list of ids is in
@@ -269,3 +310,16 @@ wrangler.toml      Cloudflare settings
   Close it, or run `npx wrangler dev --port 8788`.
 - **Bomb defusal never starts.** It needs at least one player on each team.
   Press M to pick a team, or use Deathmatch to play alone.
+- **"Connection lost — reconnecting…" at the top of the screen.** The game
+  reconnects by itself, usually in under a second, and your player waits for
+  you for 10 seconds. If it keeps happening:
+  - Press **F3**. The last line shows how many times you've reconnected and the
+    close code.
+  - Check the Cloudflare logs (see *Seeing what the server is doing* above).
+  - **Exceeded CPU** or **Exceeded resources** means a lobby went over the free
+    plan's CPU limit.
+  - **Daily request limit** means you used up the free requests for today; see
+    *If you run out of free requests*.
+- **New files don't show up in `npm run dev`.** Stop it with Ctrl + C and
+  start it again; wrangler only notices changes to files it already knew
+  about.
