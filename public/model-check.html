@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>notcs model check</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body { overflow: hidden; }
+    #panel { position: fixed; top: 10px; left: 10px; width: 320px; z-index: 5; user-select: text; -webkit-user-select: text; }
+    #panel .menu-panel { padding: 16px; }
+    #panel select { width: 100%; }
+    #out { font: 12px var(--mono); white-space: pre-wrap; background: #000; padding: 8px; border-radius: 6px; margin-top: 8px; }
+    #info { font-size: 12px; color: var(--muted); margin: 6px 0; }
+    .cross { position: fixed; left: 50%; top: 50%; width: 14px; height: 14px; transform: translate(-50%, -50%); pointer-events: none; }
+    .cross::before, .cross::after { content: ''; position: absolute; background: #5f5; }
+    .cross::before { left: 6px; top: 0; width: 2px; height: 14px; }
+    .cross::after { top: 6px; left: 0; height: 2px; width: 14px; }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+                   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div class="cross"></div>
+  <div id="panel"><div class="menu-panel">
+    <h2>Model check</h2>
+    <p class="small-note">Preview how each weapon looks in first person. Tweak the sliders, then copy the line into <code>public/config/models.js</code>.</p>
+    <label class="field">Weapon <select id="weapon"></select></label>
+    <div id="info"></div>
+    <div id="sliders"></div>
+    <div id="out"></div>
+  </div></div>
+  <script type="module" src="/js/tools/modelCheck.js"></script>
+</body>
+</html>

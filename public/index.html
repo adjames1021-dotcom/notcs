@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>notcs — free fan FPS</title>
+  <meta name="description" content="A free, non-commercial browser FPS inspired by Counter-Strike 2. Never sold, never monetized. Not affiliated with Valve.">
+  <link rel="stylesheet" href="/css/style.css">
+  <!-- Three.js comes straight from a CDN: no build step needed. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- In-game HUD (filled in by js/ui/hud.js) -->
+  <div id="hud" class="hidden">
+    <div id="flash-overlay"></div>
+    <div id="smoke-overlay"></div>
+    <div id="scope-overlay" class="hidden"></div>
+    <div id="hurt-flash"></div>
+    <div id="crosshair"></div>
+    <div id="hitmarker"></div>
+    <div id="hud-bottom-left">
+      <div class="hud-box"><span class="hud-icon">✚</span><span id="hud-health">100</span></div>
+      <div class="hud-box"><span class="hud-icon">⛨</span><span id="hud-armor">0</span></div>
+    </div>
+    <div id="hud-bottom-right">
+      <div class="hud-box" id="hud-ammo-box"><span id="hud-ammo">—</span><span id="hud-reserve"></span></div>
+    </div>
+    <div id="hud-money" class="hud-box">$<span id="hud-money-value">800</span></div>
+    <div id="round-bar" class="hidden">
+      <div class="rb-side ct"><span id="rb-ct">0</span><small id="rb-ct-alive"></small></div>
+      <div class="rb-mid"><span id="rb-timer">0:00</span><small id="rb-phase"></small></div>
+      <div class="rb-side t"><span id="rb-t">0</span><small id="rb-t-alive"></small></div>
+    </div>
+    <div id="progress" class="hidden"><div id="progress-text"></div><div class="progress-track"><div id="progress-fill"></div></div></div>
+    <div id="hud-center-msg"></div>
+    <div id="killfeed"></div>
+    <div id="hud-money-delta"></div>
+    <div id="hud-notice"></div>
+    <div id="chat-log"></div>
+    <input id="chat-input" class="hidden" maxlength="120" autocomplete="off">
+    <div id="scoreboard" class="hidden"></div>
+    <div id="buymenu" class="hidden"></div>
+    <div id="hud-weapons"></div>
+    <div id="debug-overlay" class="hidden"></div>
+    <div id="net-graph"></div>
+    <div id="net-banner" class="hidden"></div>
+    <div id="footer-notice">FREE FAN PROJECT · NEVER FOR SALE · NOT AFFILIATED WITH VALVE</div>
+  </div>
+
+  <!-- Start menu -->
+  <div id="menu" class="overlay">
+    <div class="menu-panel">
+      <h1>notcs</h1>
+      <p class="tagline">a free browser shooter inspired by Counter-Strike 2</p>
+
+      <div class="warning" role="alert">
+        <div class="warning-title">⚠ FREE FAN PROJECT — THIS WILL NEVER BE PAID FOR</div>
+        <p>This game is 100% free and will <strong>never</strong> be sold. There will never be a price,
+        paid items, skins, ads, subscriptions or donations. If anyone ever asks you to pay for it, it's a scam.</p>
+        <p>Not affiliated with, endorsed by, or connected to Valve Corporation. Counter-Strike, CS2,
+        de_dust2 and the weapon designs belong to Valve. Map and weapon models are fan-made recreations
+        used non-commercially.</p>
+      </div>
+
+      <label class="field">Name
+        <input id="menu-name" maxlength="20" autocomplete="off" placeholder="Player">
+      </label>
+
+      <div class="menu-buttons">
+        <button id="btn-practice" class="primary">Practice (offline)</button>
+      </div>
+
+      <div class="online-row">
+        <label class="field">Lobby code
+          <input id="menu-lobby" maxlength="24" autocomplete="off" placeholder="e.g. friends123">
+        </label>
+        <label class="field mode-field">Mode
+          <select id="menu-mode">
+            <option value="defusal">Bomb defusal</option>
+            <option value="dm">Deathmatch</option>
+          </select>
+        </label>
+        <button id="btn-online">Play online</button>
+      </div>
+      <p class="small-note">Everyone who types the same lobby code joins the same match. The first player's mode choice decides the mode.</p>
+
+      <div class="menu-buttons small">
+        <button id="btn-settings">Settings</button>
+        <button id="btn-controls">Controls</button>
+      </div>
+      <div id="menu-status"></div>
+    </div>
+  </div>
+
+  <!-- Shown when the mouse is released mid-game -->
+  <div id="paused" class="overlay hidden">
+    <div class="menu-panel narrow">
+      <h2>Paused</h2>
+      <p>Click to keep playing.</p>
+      <div class="menu-buttons">
+        <button id="btn-resume" class="primary">Resume</button>
+        <button id="btn-pause-settings">Settings</button>
+        <button id="btn-leave">Leave match</button>
+      </div>
+      <p class="small-note">Free fan project · never for sale · not affiliated with Valve</p>
+    </div>
+  </div>
+
+  <div id="team-menu" class="overlay hidden">
+    <div class="menu-panel narrow">
+      <h2>Choose team</h2>
+      <div class="menu-buttons team-buttons">
+        <button data-team="CT" class="team-ct">Counter-Terrorists</button>
+        <button data-team="T" class="team-t">Terrorists</button>
+        <button data-team="SPEC">Spectate</button>
+      </div>
+      <p class="small-note">During a live round you'll spawn at the start of the next round.</p>
+    </div>
+  </div>
+  <div id="settings" class="overlay hidden"></div>
+  <div id="controls" class="overlay hidden"></div>
+  <div id="loading" class="overlay hidden"><div class="loading-text">Loading…</div></div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

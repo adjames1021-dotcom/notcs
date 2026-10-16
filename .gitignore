@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+.dev.vars
+.DS_Store
+*.log
+
+# made by tools/build-collision.mjs (wrangler runs it on dev/deploy)
+public/maps/*.collision.bin

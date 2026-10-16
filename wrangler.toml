@@ -1,0 +1,36 @@
+name = "notcs"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+
+# Runs before every `wrangler dev` and `wrangler deploy` (also on Cloudflare's
+# Git builds): prebuilds the map's collision so lobbies start fast.
+[build]
+command = "node tools/build-collision.mjs"
+
+# Everything in public/ is served as static files (free, not billed).
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/ws/*"]
+
+# One Durable Object per lobby code.
+[[durable_objects.bindings]]
+name = "MATCH"
+class_name = "MatchRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MatchRoom"]
+
+# Ticks of input each player sends per message (2 = 32 messages/s).
+# Cloudflare bills 20 incoming messages as 1 request. If your lobbies use up
+# the free plan's daily requests, set this to 4: half the requests, for about
+# 15 ms of extra input delay (your own movement still responds instantly).
+[vars]
+INPUT_TICKS_PER_MESSAGE = "2"
+
+# Logs in the Cloudflare dashboard (Workers & Pages -> notcs -> Logs).
+# One line per connection/disconnection, so it stays well inside the free
+# logging allowance.
+[observability]
+enabled = true
