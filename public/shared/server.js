@@ -111,7 +111,7 @@ export class MatchServer {
         const token = typeof msg.token === 'string' && msg.token.length >= 8 ? msg.token.slice(0, 64) : randomToken();
         p = m.addPlayer({ name: msg.name, team, token });
         if (!p) {
-          this.send(session, JSON.stringify({ type: 'error', message: 'Match is full' }));
+          this.send(session, JSON.stringify({ type: 'error', message: 'That lobby is full. Pick another one, or press GO to find a free one.' }));
           try { session.conn.close(); } catch { /* ignore */ }
           return;
         }
@@ -164,6 +164,16 @@ export class MatchServer {
       default:
         if (m.handleAction) m.handleAction(p, msg);
     }
+  }
+
+  /** One line about this lobby for the lobby finder. */
+  summary() {
+    const m = this.match;
+    const r = m.rules ? m.rules.publicRoundState() : null;
+    return {
+      mode: m.mode, map: m.map.name, players: m.connectedCount(), max: m.maxPlayers,
+      phase: r ? r.phase : 'live', round: r ? r.round : 0, scoreT: r ? r.scoreT : 0, scoreCT: r ? r.scoreCT : 0,
+    };
   }
 
   // ---- the tick loop --------------------------------------------------------------------

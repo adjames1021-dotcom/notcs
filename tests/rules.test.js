@@ -198,3 +198,29 @@ test('CS2 refund: not after the gun was fired, and not once buy time is over', (
   m.refund(t, 'he');
   assert.equal(t.money, 4000, 'no refunds after buy time');
 });
+
+test('casual: $1000 start, free kevlar + helmet, defuse kits for CTs, 45 s buy time, first to 8', () => {
+  const m = new Match({ world: makeWorld(floor()), map: MAP, mode: 'casual' });
+  const t = m.addPlayer({ name: 'T', team: TEAM.T, token: 'tttttttttt' });
+  const ct = m.addPlayer({ name: 'CT', team: TEAM.CT, token: 'cccccccccc' });
+  const r = m.rules;
+  sec(m, r.R.WARMUP_COUNTDOWN + 0.1);
+  assert.equal(r.phase, PHASE.FREEZE);
+  assert.equal(t.money, 1000);
+  assert.equal(t.armor, 100); assert.equal(t.helmet, true);
+  assert.equal(ct.defuser, true); assert.equal(t.defuser, false);
+  sec(m, r.R.FREEZE_TIME + 30);
+  assert.equal(m.canBuy(t), true, 'still buy time 30 s into the round');
+  sec(m, 16);
+  assert.equal(m.canBuy(t), false, 'buy time over after 45 s');
+  assert.equal(r.R.WIN_ROUNDS, 8);
+  assert.equal(m.maxPlayers, 20);
+});
+
+test('competitive allows 10 players, deathmatch 16', () => {
+  const comp = new Match({ world: makeWorld(floor()), map: MAP, mode: 'defusal' });
+  for (let i = 0; i < 10; i++) assert.ok(comp.addPlayer({ name: 'p' + i, token: 'tokentoken' + i }));
+  assert.equal(comp.addPlayer({ name: 'extra', token: 'tokentokenx' }), null);
+  const dm = new Match({ world: makeWorld(floor()), map: MAP, mode: 'deathmatch' });
+  assert.equal(dm.maxPlayers, 16);
+});

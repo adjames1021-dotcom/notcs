@@ -21,12 +21,25 @@ and at the bottom of the screen while you play.
 
 ## What's in it
 
+- **A CS2-style main menu:**
+  - game modes: Competitive, Casual, Deathmatch and Practice
+  - press **GO** to join the busiest open lobby of that mode, or start a new one
+  - a lobby finder where you can see and join every lobby, since all lobbies
+    are public
+  - the live map moving slowly behind the menu
 - **CS2-style movement.** This is the Source engine movement code, not a
-  generic FPS controller:
+  generic FPS controller, tuned to measured CS2 numbers:
   - acceleration 5.5, friction 5.2, stop speed 80
   - air acceleration 12 with the 30-unit air cap, so air strafing works
   - counter-strafing
-  - the 18-unit step-up, crouch-jumping, landing slowdown, and fall damage
+  - jumps that peak at 55.8 units, as in CS2
+  - crouching that takes 10 ticks
+  - no slowdown when you land from a single jump
+  - the 18-unit step-up, crouch-jumping and fall damage
+- **Soldiers that match their hitboxes.** The drawn T and CT soldiers use the
+  same skeleton as the hitboxes. Crouching bends the knees and aiming up or
+  down leans the body, for what you see and for what the server checks, so if
+  you can see a head you can hit it.
 - **Every CS2 weapon:**
   - 10 pistols, 7 SMGs, 6 heavy weapons, 7 rifles and 4 snipers
   - knives with backstabs, and the Zeus
@@ -40,10 +53,14 @@ and at the bottom of the screen while you play.
   - **Smoke**, which flows around walls, blocks vision and puts out fire
   - **Molotov/incendiary**, with fire that spreads along the ground
   - **Decoy**
-- **Bomb defusal:**
+- **Bomb defusal (Competitive and Casual):**
   - freeze time, buy time and the 1:55 round timer
   - plant in 3.2 s; defuse in 10 s, or 5 s with a kit
-  - halftime side swap; first to 13 wins
+  - halftime side swap; first to 13 wins (Casual: first to 8, free armor)
+  - a CS2-style radar showing A and B, teammates, enemies you can see and the
+    bomb
+  - a hint telling you how to plant when you're in a site with the bomb
+  - when you die, you watch your teammates (click to switch)
 - **The CS2 economy:** kill rewards per weapon, the loss bonus ladder, and plant
   and defuse rewards.
 - **A CS2-style buy menu:**
@@ -59,7 +76,7 @@ and at the bottom of the screen while you play.
   - if your connection drops, the game reconnects by itself in under a
     second, and your player waits for you for 10 seconds
 - **Multiplayer:** each lobby runs on Cloudflare Workers with one Durable Object
-  per lobby code.
+  per lobby, and a lobby directory lists them all.
 - **Practice mode:** works offline against target dummies. It has an option to
   fake lag so you can test the netcode.
 
@@ -84,9 +101,12 @@ You need **Node.js 20 or newer**. Get it from https://nodejs.org (press the
    ```
    Leave this window open. It prints `Ready on http://localhost:8787`.
 5. **Play.** Open **http://localhost:8787** in Chrome or Edge.
-   - **Practice (offline):** you, the map and target dummies.
-   - **Play online:** type a lobby code. Open a second browser tab with the same
-     code to play against yourself.
+   - **PLAY tab:** pick a game mode and press **GO**. Practice is offline,
+     with target dummies. The other modes join an open lobby of that mode, or
+     start a new one.
+   - **LOBBIES tab:** every open lobby, with its mode, players and score.
+     Click **Join**, or type a name and click **Create / join** to make your
+     own. Open a second browser tab to play against yourself.
 
 **Friends on the same Wi-Fi.** Start the server with `npm run lan` instead of
 `npm run dev`. Find your computer's IP address:
@@ -130,7 +150,7 @@ You can change every key in **Controls**.
 
 ## 2. Test each stage
 
-There are **70 automated tests**. They check the numbers that make it feel like
+There are **78 automated tests**. They check the numbers that make it feel like
 CS: speeds, jump height, fall damage, damage values, fire rates, money and
 prediction. Run them with:
 
@@ -142,13 +162,13 @@ Then check each stage by hand:
 
 | Stage | How to check it |
 |---|---|
-| **1. Map and movement** | Click **Practice**. Open the browser console (F12): the map prints its size (≈ 4480 × 5312 units) and the detected up axis. Press **F3** and run: speed tops out at **250** with the knife (press 3) and **215** with the AK. Slide along walls, run up stairs (18-unit steps) and slopes. |
-| **2. Jump, crouch, air strafe** | Jumps reach ~55 units. Crouch-jump (Space, then Ctrl in the air) gets you onto the tall crates. In the air, hold A or D and turn the mouse the same way to gain speed past 250. Jumping as you land (bhop) caps you at 275. Shift walks silently. Big drops hurt. |
+| **1. Map and movement** | Choose **Practice** and press **GO**. Open the browser console (F12): the map prints its size (≈ 4480 × 5312 units) and the detected up axis. Press **F3** and run: speed tops out at **250** with the knife (press 3) and **215** with the AK. Slide along walls, run up stairs (18-unit steps) and slopes. |
+| **2. Jump, crouch, air strafe** | Jumps reach 55.8 units, like CS2, and crouching takes 10 ticks. Crouch-jump (Space, then Ctrl in the air) gets you onto the tall crates. In the air, hold A or D and turn the mouse the same way to gain speed past 250. Jumping as you land (bhop) caps you at 275. Shift walks silently. Big drops hurt. |
 | **3. Weapons** | Spray the AK at the dummies: the pattern is the same every time. Tap the USP-S. Knife a dummy from behind (right click) for a one-hit backstab. The helmet dummy dies to one AK headshot (111 damage). |
 | **4. All guns and grenades** | Press **B** (free in Practice) and try everything. Grenades: the smoke blocks vision and puts out the molotov, the flash whites you out, and the HE blows a hole in smoke. Drop guns with G and pick them up again. |
 | **5. HUD, buy menu, economy** | **Settings** has sensitivity, crosshair (dynamic or follow-recoil), volume and fake lag. Press **B**: the CS2-style menu shows your money and buy time. Buy something, then right-click it to get the money back. Click **LOADOUT** to change which guns are in your menu. Money shows +$ after a kill. |
-| **6. Multiplayer** | Two tabs (or two windows side by side), same lobby code, **Deathmatch**. Deathmatch is free-for-all like CS2, so you can shoot each other whichever team you're on. Watch the other tab's player move smoothly. F3 shows ping, prediction corrections (which should stay near 0) and reconnects. Close one tab and reopen it: you get your player back. In Practice, set **Settings → Fake latency** to 150 ms; your own movement still responds instantly. |
-| **7. Bomb defusal** | Two tabs, same lobby code, **Bomb defusal**, one player per team. Warmup, then round 1 with freeze time. The T has the C4 (key 5): plant at A or B by holding left click, and the CT defuses by holding **E**. |
+| **6. Multiplayer** | Two tabs (or two windows side by side). In both, choose **Deathmatch** and press **GO**: the second tab joins the first one's lobby, and it shows up in the **LOBBIES** tab. Deathmatch is free-for-all like CS2, so you can shoot each other whichever team you're on. Watch the other tab's player move smoothly. F3 shows ping, prediction corrections (which should stay near 0) and reconnects. Close one tab and reopen it: you get your player back. In Practice, set **Settings → Fake latency** to 150 ms; your own movement still responds instantly. |
+| **7. Bomb defusal** | Two tabs, both **Competitive** (or **Casual**) and **GO**: one player per team. On your own, warmup says it's waiting for the other team. Then round 1 starts with freeze time. The radar (top left) shows A and B. The T has the bomb (key 5): in a site a hint appears; hold left click to plant. The CT defuses by holding **E**. Die with a teammate alive and you watch them. |
 
 ## 3. Put it online (Cloudflare) — free
 
@@ -164,8 +184,9 @@ Then check each stage by hand:
    ```
    At the end it prints your game's address, something like
    `https://notcs.<your-name>.workers.dev`.
-4. Send that link to your friends. Everyone types the **same lobby code** and
-   clicks **Play online**.
+4. Send that link to your friends. Everyone presses **GO** on the same mode
+   and lands in the same lobby, or picks it from the **LOBBIES** tab. To
+   send someone straight to a lobby, add `?lobby=name` to the link.
 
 To update the online version later, run `npm run deploy` again.
 
@@ -191,6 +212,9 @@ The game keeps these low:
   day. The game rejoins by itself when you come back.
 - **Empty lobbies sleep.** When the last player leaves, the 64-tick loop
   stops and the lobby shuts down.
+- **The lobby list is cheap.** Each lobby reports itself to the lobby
+  directory every 15 seconds. The menu only refreshes the list (one request)
+  every 8 seconds while the LOBBIES tab is open.
 
 **If you run out of free requests,** open `wrangler.toml` and change
 `INPUT_TICKS_PER_MESSAGE = "2"` to `"4"`, then deploy again. That halves the
@@ -269,12 +293,14 @@ Values I wasn't sure of are marked `// TODO` in the code.
 
 - **Accuracy and recoil:** `public/shared/weapons.js` has the inaccuracy numbers
   and the spray patterns.
-- **Movement:** `public/shared/constants.js` has the stamina/landing penalty, the
-  crouch speed and tagging.
+- **Movement:** `public/shared/constants.js` has the jump, stamina, crouch speed
+  and tagging.
+- **Hitboxes and body:** `public/shared/skeleton.js` (joint positions) and
+  `public/shared/hitboxes.js` (sizes). The drawn soldiers follow them.
 - **Grenades:** `public/shared/grenades.js` has the flash durations, smoke size
   and molotov damage.
-- **Rounds:** `RULES` at the top of `public/shared/rules.js` has the round
-  timings.
+- **Rounds:** `RULES` (Competitive) and `CASUAL_RULES` at the top of
+  `public/shared/rules.js` have the round timings, money and player limits.
 
 Run `npm test` after changing things. Some tests check CS2 numbers on purpose,
 so a failing test tells you what changed.
@@ -293,10 +319,12 @@ public/            everything the browser downloads (served by Cloudflare)
   config/          map.js (spawns, bombsites, scale) and models.js (model files)
   maps/            de_dust2.glb
   models/          optimized weapon/player models (made by `npm run models`)
-src/               the Cloudflare server: worker.js (routing) + match-do.js (lobby)
+src/               the Cloudflare server: worker.js (routing), match-do.js (one per
+                   lobby) and lobbies-do.js (the list of open lobbies)
 source-models/     your original model files
 tests/             automated tests (`npm test`)
-tools/             the model optimizer
+tools/             the model optimizer, and build-map.mjs (map collision + radar,
+                   run automatically by `npm run dev` / `npm run deploy`)
 wrangler.toml      Cloudflare settings
 ```
 
@@ -312,7 +340,13 @@ wrangler.toml      Cloudflare settings
 - **`npm run dev` says the port is in use.** Another copy is already running.
   Close it, or run `npx wrangler dev --port 8788`.
 - **Bomb defusal never starts.** It needs at least one player on each team.
-  Press M to pick a team, or use Deathmatch to play alone.
+  The message in the middle of the screen says which team is missing. Press M
+  to pick a team, or play Deathmatch or Practice on your own.
+- **The LOBBIES tab says the list isn't available.** The lobby list needs the
+  game server: open the game through `npm run dev` (or your Cloudflare link),
+  not by opening `index.html` directly.
+- **No radar.** The radar picture is made by `npm run dev` / `npm run deploy`.
+  If you serve the files some other way, run `node tools/build-map.mjs` once.
 - **"Connection lost — reconnecting…" at the top of the screen.** The game
   reconnects by itself, usually in under a second, and your player waits for
   you for 10 seconds. If it keeps happening:

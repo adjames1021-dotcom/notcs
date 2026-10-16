@@ -21,7 +21,7 @@ import { TICK_DT, TICK_RATE, PLAYER } from '../shared/constants.js';
 import {
   createPlayerState, copyPlayerState, playerMove, spectatorMove, eyeHeight, playerStateError, getHull,
 } from '../shared/movement.js';
-import { createCmd, copyCmd } from '../shared/usercmd.js';
+import { createCmd, copyCmd, IN } from '../shared/usercmd.js';
 import {
   MSG, MOVE_SCHEMA, encodeCmds, quantizeCmd, newReader, readSchema, readEntity, EFLAG,
 } from '../shared/protocol.js';
@@ -130,6 +130,7 @@ export class Game {
   // ---- losing and regaining the connection -------------------------------------------
   onConnectionLost(e = {}) {
     if (!this.running) return;
+    if (this.fatalError) { this.emit('disconnected', this.fatalError); return; }
     if (this.mode !== 'online') { this.emit('disconnected', 'Disconnected.'); return; }
     const code = e.code ?? 0;
     if (this.connState === 'connected') {
@@ -189,7 +190,7 @@ export class Game {
   onWelcome(msg) {
     const rejoin = this.localId !== 0;
     this.localId = msg.id;
-    this.serverMode = msg.mode; // 'practice' | 'deathmatch' | 'defusal'
+    this.serverMode = msg.mode; // 'practice' | 'deathmatch' | 'defusal' | 'casual'
     if (this.joinInfo) this.joinInfo.token = msg.token;
     // Carry on numbering commands where the server's copy of us left off.
     this.cmdNum = Math.max(this.cmdNum, msg.cmdBase || 0);
@@ -245,6 +246,7 @@ export class Game {
         for (const ev of msg.list) this.onEvent(ev);
         break;
       case 'error':
+        this.fatalError = msg.message; // e.g. "Match is full": don't keep retrying
         this.emit('error', msg.message);
         break;
       default:
@@ -477,6 +479,12 @@ export class Game {
     cmd.select = this.input.takeSelect();
     cmd.impulse = this.input.takeImpulse();
     cmd.interp = Math.max(0, this.serverTickEst - INTERP_TICKS);
+    if (!this.alive && this.spectating) {
+      const pressed = cmd.buttons & ~(this.lastSpecButtons || 0);
+      if (pressed & IN.ATTACK) this.cycleSpectate(1);
+      else if (pressed & IN.ATTACK2) this.cycleSpectate(-1);
+    }
+    this.lastSpecButtons = cmd.buttons;
     quantizeCmd(cmd);
     this.beforeTick(cmd);
 
@@ -533,22 +541,60 @@ export class Game {
   }
 
   renderFrame(alpha, dt) {
-    const eye = this.eyePosition(alpha);
-    this.viewEye = eye;
+    let eye = this.eyePosition(alpha);
     const rt = this.renderTick();
     for (const [id, ent] of this.entities) {
       ent.render = this.interpolateEntity(ent, rt);
       this.playersView?.update(id, ent.render, this.roster.get(id), dt);
     }
     const punch = this.viewPunch ? this.viewPunch() : [0, 0];
-    this.renderer.setView(eye, this.input.yaw + punch[1], this.input.pitch + punch[0]);
-    this.audio.setListener(eye, this.input.yaw);
+    let yaw = this.input.yaw + punch[1], pitch = this.input.pitch + punch[0];
+    // Dead in bomb defusal: watch through a living teammate's eyes (CS2).
+    const spec = this.spectateView();
+    if (spec) {
+      eye = spec.eye; yaw = spec.yaw; pitch = spec.pitch;
+      const v = this.playersView?.views.get(this.spectating);
+      if (v) v.visible = false; // don't draw the body we're inside
+    }
+    this.viewEye = eye;
+    this.renderer.setView(eye, yaw, pitch);
+    this.audio.setListener(eye, yaw);
     this.beforeRender(alpha, dt);
     this.renderer.render();
     this.hud?.update(this);
   }
 
   beforeRender(alpha, dt) { void alpha; void dt; }
+
+  /** Living teammates we could spectate, in a stable order. */
+  spectateTargets() {
+    const out = [];
+    for (const [id, ent] of this.entities) {
+      const s = ent.render || ent.latest;
+      if (s && (s.flags & EFLAG.ALIVE) && s.team === this.team && !(s.wflags & 16)) out.push(id);
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  /** Camera for spectating, or null (alive, deathmatch, nobody to watch). */
+  spectateView() {
+    const rounds = this.serverMode === 'defusal' || this.serverMode === 'casual';
+    if (this.alive || !rounds || (this.team !== 1 && this.team !== 2)) { this.spectating = 0; return null; }
+    const targets = this.spectateTargets();
+    if (!targets.length) { this.spectating = 0; return null; }
+    if (!targets.includes(this.spectating)) this.spectating = targets[0];
+    const s = this.entities.get(this.spectating).render;
+    const eyeZ = PLAYER.EYE_STAND + (PLAYER.EYE_DUCK - PLAYER.EYE_STAND) * s.duck;
+    return { eye: [s.pos[0], s.pos[1], s.pos[2] + eyeZ], yaw: s.yaw, pitch: s.pitch };
+  }
+
+  /** Click while spectating: next teammate (right click: previous). */
+  cycleSpectate(dir) {
+    const t = this.spectateTargets();
+    if (t.length < 2) return;
+    const i = t.indexOf(this.spectating);
+    this.spectating = t[(i + dir + t.length) % t.length];
+  }
 
   updateStats(now, dt) {
     void dt;

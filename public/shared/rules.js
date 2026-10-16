@@ -31,16 +31,41 @@ export const RULES = {
   ROUND_END_TIME: 7,
   HALFTIME_ROUND: 12,
   WIN_ROUNDS: 13,
+  MAX_ROUNDS: 24, // 12-12 is a draw
   WARMUP_COUNTDOWN: 5,
   BOMB_DAMAGE: 500,
   BOMB_RADIUS: 1750,
   MATCH_END_TIME: 15,
+  START_MONEY: ECONOMY.START_MONEY,
+  MAX_MONEY: ECONOMY.MAX_MONEY,
+  WARMUP_MONEY: ECONOMY.MAX_MONEY,
+  FREE_ARMOR: false, // kevlar + helmet every round
+  FREE_DEFUSER: false, // defuse kit for every CT
+  MAX_PLAYERS: 10, // 5v5
+};
+
+// CS2 Casual: 10v10, short freeze time, long buy time, free armor and kits,
+// first to 8 rounds (15 at most), less money. TODO: check CS2's casual values.
+export const CASUAL_RULES = {
+  FREEZE_TIME: 6,
+  ROUND_TIME: 135, // 2:15
+  BUY_TIME: 45,
+  HALFTIME_ROUND: 7,
+  WIN_ROUNDS: 8,
+  MAX_ROUNDS: 15,
+  START_MONEY: 1000,
+  MAX_MONEY: 10000,
+  FREE_ARMOR: true,
+  FREE_DEFUSER: true,
+  MAX_PLAYERS: 20,
 };
 
 const T = 1, CT = 2;
 
 export class DefusalRules {
-  constructor() {
+  /** @param rules RULES (competitive) or CASUAL_RULES */
+  constructor(rules = RULES) {
+    this.R = { ...RULES, ...rules };
     this.phase = PHASE.WARMUP;
     this.phaseEnd = 0; // tick when the current phase ends
     this.round = 0;
@@ -57,7 +82,7 @@ export class DefusalRules {
   }
 
   // ---- hooks used by Match ------------------------------------------------------------
-  startMoney() { return this.phase === PHASE.WARMUP ? ECONOMY.MAX_MONEY : ECONOMY.START_MONEY; }
+  startMoney() { return this.phase === PHASE.WARMUP ? this.R.WARMUP_MONEY : this.R.START_MONEY; }
 
   /** Movement is frozen in freeze time and while planting/defusing. */
   isFrozen(p) {
@@ -76,7 +101,7 @@ export class DefusalRules {
     if (!inBox(p.ps.pos, zone)) return false;
     if (this.phase === PHASE.FREEZE) return true;
     if (this.phase === PHASE.LIVE || this.phase === PHASE.PLANTED) {
-      return (this.m.tick - this.roundStartTick) * TICK_DT <= RULES.BUY_TIME;
+      return (this.m.tick - this.roundStartTick) * TICK_DT <= this.R.BUY_TIME;
     }
     return false;
   }
@@ -92,7 +117,7 @@ export class DefusalRules {
   }
 
   onSpawn(p) {
-    if (this.phase === PHASE.WARMUP) p.money = ECONOMY.MAX_MONEY;
+    if (this.phase === PHASE.WARMUP) p.money = this.R.WARMUP_MONEY;
   }
 
   onKill(p, attacker) {
@@ -113,13 +138,14 @@ export class DefusalRules {
       if (site && p.ps.onGround) {
         if (!p.planting) {
           p.planting = { start: m.tick, site };
-          m.emit({ type: 'planting', id: p.id, site, time: RULES.PLANT_TIME });
-        } else if ((m.tick - p.planting.start) * TICK_DT >= RULES.PLANT_TIME) {
+          m.emit({ type: 'planting', id: p.id, site, time: this.R.PLANT_TIME });
+        } else if ((m.tick - p.planting.start) * TICK_DT >= this.R.PLANT_TIME) {
           this.plant(p, site);
         }
         return;
-      } else if (!p.planting && cmd.buttons & IN.ATTACK) {
-        m.emit({ type: 'notice', text: 'You must be in a bombsite to plant', to: p.id });
+      } else if (!p.planting && cmd.buttons & IN.ATTACK && !(p.plantNoticeAt > m.tick)) {
+        p.plantNoticeAt = m.tick + TICK_RATE * 2; // not every tick
+        m.emit({ type: 'notice', text: site ? 'Stand still on the ground to plant' : 'You must be in bombsite A or B to plant', to: p.id });
       }
     }
     if (p.planting) {
@@ -137,22 +163,25 @@ export class DefusalRules {
   update() {
     const m = this.m;
     const now = m.tick;
+    if (this.R.MAX_MONEY < ECONOMY.MAX_MONEY) {
+      for (const p of m.players.values()) if (p.money > this.R.MAX_MONEY) p.money = this.R.MAX_MONEY;
+    }
     const teams = this.teamCounts();
     switch (this.phase) {
       case PHASE.WARMUP:
         if (teams[T].total > 0 && teams[CT].total > 0) {
           if (!this.warmupStart) {
             this.warmupStart = now;
-            m.emit({ type: 'round', phase: 'warmup', text: `Match starting in ${RULES.WARMUP_COUNTDOWN} s`, ...this.publicRoundState() });
+            m.emit({ type: 'round', phase: 'warmup', text: `Match starting in ${this.R.WARMUP_COUNTDOWN} s`, ...this.publicRoundState() });
           }
-          if (now - this.warmupStart >= RULES.WARMUP_COUNTDOWN * TICK_RATE) this.startMatch();
+          if (now - this.warmupStart >= this.R.WARMUP_COUNTDOWN * TICK_RATE) this.startMatch();
         } else this.warmupStart = 0;
         break;
       case PHASE.FREEZE:
         if (now >= this.phaseEnd) {
           this.phase = PHASE.LIVE;
           this.roundStartTick = now;
-          this.phaseEnd = now + RULES.ROUND_TIME * TICK_RATE;
+          this.phaseEnd = now + this.R.ROUND_TIME * TICK_RATE;
           m.emit({ type: 'round', phase: 'live', ...this.publicRoundState() });
         }
         break;
@@ -201,7 +230,7 @@ export class DefusalRules {
     this.lossStreak = { [T]: 0, [CT]: 0 };
     m.roundsPlayed = 0;
     for (const p of m.players.values()) {
-      p.money = ECONOMY.START_MONEY;
+      p.money = this.R.START_MONEY;
       p.stats = { kills: 0, deaths: 0, assists: 0, damage: 0, score: 0, mvps: 0, hs: 0 };
       p.armor = 0; p.helmet = false; p.defuser = false;
       p.alive = false; // everyone gets a fresh default loadout
@@ -217,7 +246,7 @@ export class DefusalRules {
     m.items.clear();
     m.grenades.clear();
     this.phase = PHASE.FREEZE;
-    this.phaseEnd = m.tick + RULES.FREEZE_TIME * TICK_RATE;
+    this.phaseEnd = m.tick + this.R.FREEZE_TIME * TICK_RATE;
     this.roundStartTick = this.phaseEnd;
     m.spawnCursor = { 1: 0, 2: 0 };
     for (const p of m.players.values()) {
@@ -227,6 +256,8 @@ export class DefusalRules {
       // survivors keep their gear; the dead get the default pistol + knife
       m.spawnPlayer(p, { keepLoadout: p.alive });
       if (p.ws.c4) removeSlot(p.ws, SLOT.C4);
+      if (this.R.FREE_ARMOR) { p.armor = 100; p.helmet = true; }
+      if (this.R.FREE_DEFUSER && p.team === CT) p.defuser = true;
     }
     // one random terrorist carries the bomb
     const ts = [...m.players.values()].filter((p) => p.team === T && p.alive);
@@ -264,12 +295,12 @@ export class DefusalRules {
       }
     }
     this.phase = PHASE.ENDED;
-    this.phaseEnd = m.tick + RULES.ROUND_END_TIME * TICK_RATE;
+    this.phaseEnd = m.tick + this.R.ROUND_END_TIME * TICK_RATE;
     const text = `${winner === T ? 'Terrorists' : 'Counter-Terrorists'} Win`;
     m.emit({ type: 'round', phase: 'ended', winner, reason, text, winMoney, lossMoney, ...this.publicRoundState() });
-    if (this.score[winner] >= RULES.WIN_ROUNDS || (this.score[T] === RULES.HALFTIME_ROUND && this.score[CT] === RULES.HALFTIME_ROUND)) {
+    if (this.score[winner] >= this.R.WIN_ROUNDS || m.roundsPlayed >= this.R.MAX_ROUNDS) {
       this.phase = PHASE.MATCH_END;
-      this.phaseEnd = m.tick + RULES.MATCH_END_TIME * TICK_RATE;
+      this.phaseEnd = m.tick + this.R.MATCH_END_TIME * TICK_RATE;
       const draw = this.score[T] === this.score[CT];
       m.emit({ type: 'round', phase: 'matchend', winner: draw ? 0 : winner, text: draw ? 'Match drawn' : `${text} the match!`, ...this.publicRoundState() });
     }
@@ -277,12 +308,12 @@ export class DefusalRules {
 
   nextRound() {
     const m = this.m;
-    if (m.roundsPlayed === RULES.HALFTIME_ROUND) {
+    if (m.roundsPlayed === this.R.HALFTIME_ROUND) {
       // halftime: swap sides, reset money and loss bonuses
       for (const p of m.players.values()) {
         if (p.dummy) continue;
         if (p.team === T) p.team = CT; else if (p.team === CT) p.team = T;
-        p.money = ECONOMY.START_MONEY;
+        p.money = this.R.START_MONEY;
         p.alive = false; p.armor = 0; p.helmet = false; p.defuser = false;
         m.emit({ type: 'team', id: p.id, team: p.team });
       }
@@ -299,7 +330,7 @@ export class DefusalRules {
     this.round = 0;
     this.score = { [T]: 0, [CT]: 0 };
     for (const p of this.m.players.values()) {
-      p.money = ECONOMY.MAX_MONEY;
+      p.money = this.R.WARMUP_MONEY;
       if (!p.alive && (p.team === T || p.team === CT) && p.connected) this.m.spawnPlayer(p);
     }
     this.m.emit({ type: 'round', phase: 'warmup', text: 'Warmup', ...this.publicRoundState() });
@@ -313,7 +344,7 @@ export class DefusalRules {
     const next = p.ws.last && p.ws.last !== SLOT.C4 ? p.ws.last : SLOT.SECONDARY;
     p.ws.active = SLOT.NONE;
     switchTo(p.ws, p.ws.pri ? SLOT.PRIMARY : next);
-    this.bomb = { pos: p.ps.pos.slice(), site, planter: p.id, explodeTick: m.tick + RULES.BOMB_TIME * TICK_RATE, defuser: 0, defuseEnd: 0 };
+    this.bomb = { pos: p.ps.pos.slice(), site, planter: p.id, explodeTick: m.tick + this.R.BOMB_TIME * TICK_RATE, defuser: 0, defuseEnd: 0 };
     this.phase = PHASE.PLANTED;
     addMoney(p, ECONOMY.PLANT_REWARD);
     p.stats.score += 2;
@@ -332,7 +363,7 @@ export class DefusalRules {
     }
     for (const p of m.players.values()) {
       if (p.team !== CT || !p.alive || !(p.lastButtons & IN.USE) || !this.nearBomb(p)) continue;
-      const time = p.defuser ? RULES.DEFUSE_TIME_KIT : RULES.DEFUSE_TIME;
+      const time = p.defuser ? this.R.DEFUSE_TIME_KIT : this.R.DEFUSE_TIME;
       b.defuser = p.id;
       b.defuseEnd = m.tick + Math.round(time * TICK_RATE);
       p.defusing = true;
@@ -344,7 +375,7 @@ export class DefusalRules {
   nearBomb(p) {
     const b = this.bomb;
     const dx = p.ps.pos[0] - b.pos[0], dy = p.ps.pos[1] - b.pos[1], dz = p.ps.pos[2] - b.pos[2];
-    return Math.hypot(dx, dy) < RULES.DEFUSE_RANGE && Math.abs(dz) < 72;
+    return Math.hypot(dx, dy) < this.R.DEFUSE_RANGE && Math.abs(dz) < 72;
   }
 
   stopDefuse() {
@@ -376,9 +407,9 @@ export class DefusalRules {
     for (const v of m.players.values()) {
       if (!v.alive) continue;
       const d = Math.hypot(v.ps.pos[0] - c[0], v.ps.pos[1] - c[1], v.ps.pos[2] + 36 - c[2]);
-      if (d > RULES.BOMB_RADIUS) continue;
-      const f = d / RULES.BOMB_RADIUS;
-      const raw = RULES.BOMB_DAMAGE * Math.exp(-f * f * 4.5);
+      if (d > this.R.BOMB_RADIUS) continue;
+      const f = d / this.R.BOMB_RADIUS;
+      const raw = this.R.BOMB_DAMAGE * Math.exp(-f * f * 4.5);
       const dmg = computeDamage(raw, HITGROUP.GENERIC, 50, v);
       m.damagePlayer(v, dmg.health, dmg.armor, null, 'c4', { group: HITGROUP.GENERIC, from: c });
     }
@@ -395,12 +426,23 @@ export class DefusalRules {
       scoreT: this.score[T],
       scoreCT: this.score[CT],
       timeLeft: Math.max(0, (this.phaseEnd - m.tick) * TICK_DT),
-      buyLeft: this.phase === PHASE.FREEZE ? RULES.FREEZE_TIME + RULES.BUY_TIME
-        : Math.max(0, RULES.BUY_TIME - (m.tick - this.roundStartTick) * TICK_DT),
+      buyTime: this.R.BUY_TIME,
+      winRounds: this.R.WIN_ROUNDS,
+      // warmup: why the match hasn't started yet
+      waiting: this.phase === PHASE.WARMUP && !this.warmupStart ? this.waitingFor() : null,
+      buyLeft: this.phase === PHASE.FREEZE ? this.R.FREEZE_TIME + this.R.BUY_TIME
+        : Math.max(0, this.R.BUY_TIME - (m.tick - this.roundStartTick) * TICK_DT),
       bomb: this.bomb ? { pos: this.bomb.pos.map((v) => Math.round(v * 10) / 10), site: this.bomb.site, left: Math.max(0, (this.bomb.explodeTick - m.tick) * TICK_DT), defuser: this.bomb.defuser } : null,
       serverTick: m.tick,
     };
   }
 
   publicRound() { return { round: this.publicRoundState() }; }
+
+  waitingFor() {
+    const c = this.teamCounts();
+    if (!c[T].total && !c[CT].total) return 'Waiting for players';
+    if (!c[T].total) return 'Waiting for a Terrorist — the match starts when both teams have a player';
+    return 'Waiting for a Counter-Terrorist — the match starts when both teams have a player';
+  }
 }

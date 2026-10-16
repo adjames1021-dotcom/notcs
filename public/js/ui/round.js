@@ -67,7 +67,11 @@ export class RoundHud {
         if (ev.phase === 'freeze') this.center(`Round ${ev.round}`, 2);
         if (ev.phase === 'live') g.audio.tone({ gain: 0.2, freq: 660, freqEnd: 990, duration: 0.25, type: 'triangle' });
         if (ev.phase === 'ended') this.jingle(ev.winner);
-        if (ev.phase === 'planted') { for (let i = 0; i < 3; i++) g.audio.tone({ gain: 0.2, freq: 880, duration: 0.12, type: 'square', delay: i * 0.18 }); }
+        if (ev.phase === 'planted') {
+          this.stopProgress(); // the planter's bar is done
+          for (let i = 0; i < 3; i++) g.audio.tone({ gain: 0.2, freq: 880, duration: 0.12, type: 'square', delay: i * 0.18 });
+        }
+        if (ev.phase === 'ended' || ev.phase === 'freeze') this.stopProgress();
         break;
       case 'notice':
         this.center(ev.text, 2.5);
@@ -205,9 +209,18 @@ export class RoundHud {
       const k = Math.min(1, (now - this.progress.start) / this.progress.dur);
       this.el.progressFill.style.width = (k * 100).toFixed(1) + '%';
     }
+    // warmup: say what we're waiting for (press M to change team)
+    if (this.state && this.state.phase === 'warmup' && this.state.waiting && !this.el.center.textContent) {
+      this.el.center.textContent = `${this.state.waiting}. Press M to pick a team.`;
+      this.el.center.className = 'small';
+      this.centerUntil = now + 500;
+    }
     // dead: tell the player what's going on
     if (!g.alive && g.localId && !this.el.center.textContent && this.state && this.state.phase !== 'warmup') {
-      this.el.center.textContent = 'You are dead — free camera until the next round';
+      const target = g.spectating ? g.roster.get(g.spectating) : null;
+      this.el.center.textContent = target
+        ? `Spectating ${target.name || 'teammate'} — click to switch`
+        : 'You are dead — free camera until the next round';
       this.el.center.className = 'small';
       this.centerUntil = now + 500;
     }

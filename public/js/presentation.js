@@ -75,7 +75,7 @@ export class Presentation {
       for (const [id, ent] of g.entities) {
         const s = ent.render || ent.latest;
         if (!s || !(s.flags & EFLAG.ALIVE) || (exclude && exclude.has(id))) continue;
-        const h = rayPlayer(start, dir, maxDist, s.pos, s.yaw, s.duck, this._caps);
+        const h = rayPlayer(start, dir, maxDist, s.pos, s.yaw, s.duck, this._caps, 0, s.pitch || 0);
         if (h && (!best || h.t < best.t)) best = { t: h.t, group: h.group, id };
       }
       return best;
@@ -161,6 +161,7 @@ export class Presentation {
     this.updateCrosshair(def);
     if (g.buyMenu) g.buyMenu.update();
     if (g.roundHud) g.roundHud.update();
+    if (g.radar) g.radar.update();
     if (this.smokeEl && g.viewEye) this.smokeEl.style.opacity = this.nades.cameraInSmoke(g.viewEye) ? '0.85' : '0';
     // hit marker + damage flash
     this.hitmarkerT = Math.max(0, this.hitmarkerT - dt);

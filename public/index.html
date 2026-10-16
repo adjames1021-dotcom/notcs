@@ -27,6 +27,8 @@
     <div id="hurt-flash"></div>
     <div id="crosshair"></div>
     <div id="hitmarker"></div>
+    <canvas id="radar" class="hidden"></canvas>
+    <div id="hud-hint" class="hidden"></div>
     <div id="hud-bottom-left">
       <div class="hud-box"><span class="hud-icon">✚</span><span id="hud-health">100</span></div>
       <div class="hud-box"><span class="hud-icon">⛨</span><span id="hud-armor">0</span></div>
@@ -56,49 +58,92 @@
     <div id="footer-notice">FREE FAN PROJECT · NEVER FOR SALE · NOT AFFILIATED WITH VALVE</div>
   </div>
 
-  <!-- Start menu -->
-  <div id="menu" class="overlay">
-    <div class="menu-panel">
-      <h1>notcs</h1>
-      <p class="tagline">a free browser shooter inspired by Counter-Strike 2</p>
+  <!-- Main menu (CS2 style): top bar with tabs, PLAY (game modes + GO) and LOBBIES (lobby finder) -->
+  <div id="menu" class="mm">
+    <header class="mm-top">
+      <div class="mm-logo">notcs</div>
+      <nav class="mm-tabs">
+        <button class="mm-tab active" data-tab="play">Play</button>
+        <button class="mm-tab" data-tab="lobbies">Lobbies</button>
+        <button class="mm-tab" id="btn-settings">Settings</button>
+        <button class="mm-tab" id="btn-controls">Controls</button>
+      </nav>
+      <label class="mm-name">Name <input id="menu-name" maxlength="20" autocomplete="off" placeholder="Player"></label>
+    </header>
 
-      <div class="warning" role="alert">
-        <div class="warning-title">⚠ FREE FAN PROJECT — THIS WILL NEVER BE PAID FOR</div>
-        <p>This game is 100% free and will <strong>never</strong> be sold. There will never be a price,
-        paid items, skins, ads, subscriptions or donations. If anyone ever asks you to pay for it, it's a scam.</p>
-        <p>Not affiliated with, endorsed by, or connected to Valve Corporation. Counter-Strike, CS2,
-        de_dust2 and the weapon designs belong to Valve. Map and weapon models are fan-made recreations
-        used non-commercially.</p>
-      </div>
+    <main class="mm-body">
+      <!-- PLAY: pick a mode and press GO -->
+      <section class="mm-page" id="page-play">
+        <h2 class="mm-heading">Game mode</h2>
+        <div class="mm-modes" id="mm-modes">
+          <button class="mm-mode active" data-mode="comp">
+            <span class="mm-mode-name">Competitive</span>
+            <span class="mm-mode-sub">5v5 · Bomb defusal · first to 13</span>
+          </button>
+          <button class="mm-mode" data-mode="casual">
+            <span class="mm-mode-name">Casual</span>
+            <span class="mm-mode-sub">10v10 · Bomb defusal · free armor · first to 8</span>
+          </button>
+          <button class="mm-mode" data-mode="dm">
+            <span class="mm-mode-name">Deathmatch</span>
+            <span class="mm-mode-sub">Free-for-all · instant respawn · free guns</span>
+          </button>
+          <button class="mm-mode" data-mode="practice">
+            <span class="mm-mode-name">Practice</span>
+            <span class="mm-mode-sub">Offline · target dummies · try everything</span>
+          </button>
+        </div>
+        <h2 class="mm-heading">Map</h2>
+        <div class="mm-maps">
+          <div class="mm-map active">
+            <img src="/img/de_dust2.jpg" alt="">
+            <span>de_dust2</span>
+          </div>
+        </div>
+        <div class="mm-go-row">
+          <p class="mm-mode-desc" id="mm-mode-desc"></p>
+          <button id="btn-go" class="mm-go">GO</button>
+        </div>
+        <div id="menu-status" class="mm-status"></div>
+      </section>
 
-      <label class="field">Name
-        <input id="menu-name" maxlength="20" autocomplete="off" placeholder="Player">
-      </label>
-
-      <div class="menu-buttons">
-        <button id="btn-practice" class="primary">Practice (offline)</button>
-      </div>
-
-      <div class="online-row">
-        <label class="field">Lobby code
-          <input id="menu-lobby" maxlength="24" autocomplete="off" placeholder="e.g. friends123">
-        </label>
-        <label class="field mode-field">Mode
+      <!-- LOBBIES: every open lobby, join any of them, or make your own -->
+      <section class="mm-page hidden" id="page-lobbies">
+        <div class="mm-lobby-tools">
+          <button id="btn-refresh" class="mm-small">Refresh</button>
+          <label>Show
+            <select id="lobby-filter">
+              <option value="">all modes</option>
+              <option value="defusal">Competitive</option>
+              <option value="casual">Casual</option>
+              <option value="deathmatch">Deathmatch</option>
+            </select>
+          </label>
+          <span class="mm-grow"></span>
+          <label>Lobby name <input id="menu-lobby" maxlength="24" autocomplete="off" placeholder="e.g. friends123"></label>
           <select id="menu-mode">
-            <option value="defusal">Bomb defusal</option>
+            <option value="comp">Competitive</option>
+            <option value="casual">Casual</option>
             <option value="dm">Deathmatch</option>
           </select>
-        </label>
-        <button id="btn-online">Play online</button>
-      </div>
-      <p class="small-note">Everyone who types the same lobby code joins the same match. The first player's mode choice decides the mode.</p>
+          <button id="btn-online" class="mm-small primary">Create / join</button>
+        </div>
+        <div class="mm-table-wrap">
+          <table class="mm-table">
+            <thead><tr><th>Lobby</th><th>Mode</th><th>Map</th><th>Players</th><th>Status</th><th></th></tr></thead>
+            <tbody id="lobby-rows"></tbody>
+          </table>
+          <div id="lobby-empty" class="mm-empty hidden">No open lobbies right now. Create one, or press GO on the Play tab and others will find you.</div>
+        </div>
+        <p class="mm-note">Every lobby is open: anyone can see it here and join. Share the lobby name with friends, or send them this page's link with <code>?lobby=name</code> at the end.</p>
+      </section>
+    </main>
 
-      <div class="menu-buttons small">
-        <button id="btn-settings">Settings</button>
-        <button id="btn-controls">Controls</button>
-      </div>
-      <div id="menu-status"></div>
-    </div>
+    <footer class="mm-warning" role="alert">
+      <b>⚠ FREE FAN PROJECT — THIS WILL NEVER BE PAID FOR.</b>
+      100% free: there will never be a price, paid items, skins, ads, subscriptions or donations. If anyone asks you to pay for it, it's a scam.
+      Not affiliated with, endorsed by, or connected to Valve Corporation. Counter-Strike, CS2, de_dust2 and the weapon designs belong to Valve; the map and weapon models are fan-made recreations used non-commercially.
+    </footer>
   </div>
 
   <!-- Shown when the mouse is released mid-game -->

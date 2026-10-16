@@ -4,5 +4,7 @@ node_modules/
 .DS_Store
 *.log
 
-# made by tools/build-collision.mjs (wrangler runs it on dev/deploy)
+# made by tools/build-map.mjs (wrangler runs it on dev/deploy)
 public/maps/*.collision.bin
+public/maps/*.radar.png
+public/maps/*.radar.json

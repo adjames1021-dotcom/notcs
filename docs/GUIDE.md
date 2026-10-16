@@ -90,7 +90,7 @@ shooting and reloading with zero corrections.
 | File | What it does |
 |---|---|
 | `package.json` | Project info and the commands: `npm run dev`, `npm run deploy`, `npm test`, `npm run models`. |
-| `wrangler.toml` | Cloudflare settings: the Worker, static files from `public/`, the `MATCH` Durable Object binding and its migration. Also the `[build]` step that prebuilds collision, and `INPUT_TICKS_PER_MESSAGE`, the knob that controls cost. |
+| `wrangler.toml` | Cloudflare settings: the Worker, static files from `public/`, the `MATCH` (one per lobby) and `LOBBIES` (lobby list) Durable Objects and their migrations. Also the `[build]` step that prebuilds the map collision and radar, and `INPUT_TICKS_PER_MESSAGE`, the knob that controls cost. |
 | `README.md` | How to run, test, deploy and customise. |
 | `docs/GUIDE.md` | This file. |
 
@@ -98,8 +98,9 @@ shooting and reloading with zero corrections.
 
 | File | What it does |
 |---|---|
-| `worker.js` | Entry point. `/ws/<code>` goes to the lobby's Durable Object via `idFromName(code)`. Everything else is served from `public/`. |
-| `match-do.js` | The **Durable Object** (one per lobby). Loads the prebuilt collision file (about 3 ms instead of about 110 ms of CPU) and runs a `MatchServer` at 64 ticks/s. Ticks run when input arrives, with a timer as backup. Uses the normal WebSocket API: the tick loop keeps the object awake anyway, and this way one connection is one invocation. Logs each connection and its close code. The tick loop stops when the lobby is empty. |
+| `worker.js` | Entry point. `/ws/<code>` goes to the lobby's Durable Object via `idFromName(code)`. `/api/lobbies` returns the list of open lobbies. Everything else is served from `public/`. |
+| `lobbies-do.js` | The **lobby directory**: one Durable Object that every lobby reports to (mode, players, round, score) every 15 s. The menu's lobby finder reads it. The list lives only in memory, and lobbies that stop reporting drop off after 45 s. |
+| `match-do.js` | The **Durable Object** (one per lobby). `?mode=comp`, `casual` or `dm` picks the mode when the lobby starts. Reports to the lobby directory. Loads the prebuilt collision file (about 3 ms instead of about 110 ms of CPU) and runs a `MatchServer` at 64 ticks/s. Ticks run when input arrives, with a timer as backup. Uses the normal WebSocket API: the tick loop keeps the object awake anyway, and this way one connection is one invocation. Logs each connection and its close code. The tick loop stops when the lobby is empty. |
 
 ### `public/shared/` — the game itself (browser **and** server)
 
@@ -113,13 +114,14 @@ shooting and reloading with zero corrections.
 | `movement.js` | **The movement code.** A port of Source's walk/air/step/slide logic, plus the CS2 additions (accelerate scale, air cap, bhop cap, stamina, crouch-jump, fall damage). |
 | `weapons.js` | **Stats for every weapon.** Damage, armor penetration, RPM, magazine, reserve, reload, speed, price, kill reward, range, accuracy, spray patterns. Values marked TODO are estimates. |
 | `weaponLogic.js` | What fire/reload/switch/scope/silencer/burst/knife/grenade-throw do each tick, plus the inventory. Shared, so prediction matches. |
-| `hitboxes.js` | Body-part capsules (head, neck, chest, stomach, arms, legs) and ray tests. |
+| `skeleton.js` | Where a player's joints are for a given crouch and aim pitch. The hitboxes AND the drawn soldier are both built from it, so they always line up. |
+| `hitboxes.js` | Body-part capsules (head, neck, chest, stomach, upper/lower arms and legs) built on the skeleton, and ray tests. |
 | `bullets.js` | Hitscan: map hits, wallbangs (penetration and damage loss), range falloff, hit groups, armor/helmet. |
 | `random.js` | Seeded random numbers, so spread is the same on browser and server. |
 | `grenades.js` | Grenade physics and effects: HE falloff, flash line of sight/facing, smoke flood fill, fire spread, decoy. |
 | `items.js` | Weapons on the ground: drop (G), drop on death, pick up by walking over or with E. |
 | `economy.js` | CS2 money rules, `tryBuy` (prices, team restrictions, armor/kit, grenade limits) and `refundItem` (CS2 sell-back of unused items). |
-| `rules.js` | **Bomb defusal**: warmup, freeze, live, planted and round end; win conditions, round money, halftime, first to 13. |
+| `rules.js` | **Bomb defusal**: warmup, freeze, live, planted and round end; win conditions, round money, halftime. `RULES` is Competitive (first to 13); `CASUAL_RULES` is Casual (free armor and kits, first to 8). |
 | `match.js` | **The authoritative game.** Players, commands, spawning, damage, kills, practice dummies, lag-compensation history and the 64-tick `step()`. |
 | `server.js` | `MatchServer`: connections, decoding inputs, the fixed tick loop, and per-player snapshots and events. Used by both the Durable Object and Practice mode. |
 | `protocol.js` | The binary message formats (inputs and snapshots), with delta compression for other players. |
@@ -129,7 +131,7 @@ shooting and reloading with zero corrections.
 
 | File | What it does |
 |---|---|
-| `main.js` | Start-up: menu, loads the map, starts Practice or Online, auto-reconnect. |
+| `main.js` | Start-up: loads the map in the background (shown behind the menu), starts Practice or an online lobby when the menu asks. |
 | `game.js` | **The client loop.** Builds usercmds every tick, predicts, sends 2 per message, reconciles with snapshots, interpolates other players, measures ping. |
 | `input.js` | Keyboard and mouse. Pointer lock with raw input, latched key taps, scroll-wheel jump, key bindings. |
 | `net.js` | `WebSocketTransport` (online) and `LocalTransport` (Practice, with optional fake lag). |
@@ -139,9 +141,11 @@ shooting and reloading with zero corrections.
 | `render/renderer.js` | Three.js setup: Z-up world in Hammer units, CS2 FOV, sky, lights, shadows; draws the map with the same orientation as physics. |
 | `render/models.js` | Loads weapon and player models from `config/models.js`, fixes orientation and scale, and falls back to placeholders. |
 | `render/viewmodel.js` | Your first-person gun: placement, bob, sway, recoil kick, reload/deploy/knife animations, muzzle flash. |
-| `render/players.js` | Other players (blocky placeholders or your player models), walk/crouch/death animation, held weapon. |
+| `render/players.js` | Other players: low-poly T and CT soldiers built on `shared/skeleton.js` (or your player models), with walk, crouch, in-air and death animation, and the weapon in their hand pointing where they aim. |
 | `render/effects.js` | Pooled tracers, bullet holes, puffs and muzzle flashes. |
 | `render/nades.js` | Grenades in flight, explosions, smoke clouds, fire, flashbang white-out, dropped weapons. |
+| `ui/mainmenu.js` | The CS2-style main menu: Play (game modes and GO), the lobby finder, Settings and Controls. |
+| `ui/radar.js` | The radar (top left): the map turns with you and shows bombsites, teammates, enemies you can see and the bomb. Also shows the "how to plant" hint. |
 | `ui/hud.js` | Health, armor, money, ammo, net graph, debug overlay (F3). |
 | `ui/crosshair.js` | Draws the CS2-style crosshair. |
 | `ui/menus.js` | Settings and Controls screens (with key rebinding). |
@@ -167,8 +171,8 @@ shooting and reloading with zero corrections.
 | `public/models/` | Optimized models plus `manifest.json`, made by `npm run models`. Don't edit by hand. |
 | `source-models/` | Your original model files. Add new ones here. |
 | `tools/optimize-models.mjs` | The `npm run models` script. |
-| `tools/build-collision.mjs` | Writes `public/maps/de_dust2.collision.bin`. Wrangler runs it before every `dev` and `deploy`, so you never need to run it yourself. The file isn't committed to git. |
-| `tests/` | Automated tests (`npm test`): movement feel, weapons and CS2 damage numbers, grenades, rules, money and refunds, netcode (prediction, bundling, lag compensation), and reconnecting (command numbers, the 10 s grace period, free-for-all deathmatch, idle kick, the prebuilt collision file). |
+| `tools/build-map.mjs` | Writes `public/maps/de_dust2.collision.bin` (prebuilt collision for the server) and `de_dust2.radar.png` / `.radar.json` (the radar picture: only floor reachable from the spawns). Wrangler runs it before every `dev` and `deploy`, so you never need to run it yourself. The files aren't committed to git. |
+| `tests/` | Automated tests (`npm test`): the lobby directory and Casual rules, movement feel, weapons and CS2 damage numbers, grenades, rules, money and refunds, netcode (prediction, bundling, lag compensation), and reconnecting (command numbers, the 10 s grace period, free-for-all deathmatch, idle kick, the prebuilt collision file). |
 
 ## Coordinate system
 

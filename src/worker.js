@@ -4,10 +4,12 @@
 //   /ws/<lobby-code>  -> WebSocket to that lobby's Durable Object.
 //                        idFromName(lobbyCode) means everyone who types the
 //                        same code lands in the same match.
+//   /api/lobbies      -> every open lobby (for the menu's lobby finder)
 //   everything else   -> the game's static files from /public
 // ---------------------------------------------------------------------------
 
 export { MatchRoom } from './match-do.js';
+export { LobbyDirectory } from './lobbies-do.js';
 
 const LOBBY = /^\/ws\/([a-z0-9_-]{1,24})$/;
 
@@ -23,6 +25,10 @@ export default {
       return env.MATCH.get(id).fetch(request);
     }
     if (url.pathname.startsWith('/ws/')) return new Response('Bad lobby code', { status: 400 });
+    if (url.pathname === '/api/lobbies' && request.method === 'GET') {
+      const dir = env.LOBBIES.get(env.LOBBIES.idFromName('directory'));
+      return dir.fetch('https://lobbies/list');
+    }
     return env.ASSETS.fetch(request);
   },
 };
