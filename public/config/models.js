@@ -43,7 +43,7 @@ export const VIEWMODEL_DEFAULTS = {
 // Every weapon in the game. Ones without a model file yet use a placeholder.
 export const WEAPON_MODELS = {
   // pistols
-  glock: {},
+  glock: { forward: '-x', up: '+y', scale: 8.7 }, // exported lying along X, 1 unit long
   usps: {},
   p2000: {},
   p250: {},

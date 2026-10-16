@@ -212,21 +212,24 @@ with `idFromName(code)`, so the same code always reaches the same match.
 
 ## 4. Add or change models
 
-All 18 models you uploaded are in the game, in `source-models/weapons/`:
+All 19 models you uploaded are in the game, in `source-models/weapons/`:
 AK-47, AUG, AWP, PP-Bizon, C4, CZ75-Auto, Desert Eagle, Dual Berettas, G3SG1,
-Galil AR, both knives, M4A4, MP5-SD, MP7, MP9, Negev and USP-S.
+Galil AR, Glock-18, both knives, M4A4, MP5-SD, MP7, MP9, Negev and USP-S.
 
 These have **no model yet**. In game they show a simple box gun, and in the buy
 menu a white outline:
 
-- **Pistols:** Glock-18, P2000, P250, Five-SeveN, Tec-9, R8 Revolver
+- **Pistols:** P2000, P250, Five-SeveN, Tec-9, R8 Revolver
 - **SMGs:** MAC-10, UMP-45, P90
 - **Shotguns:** Nova, XM1014, Sawed-Off, MAG-7
 - **Rifles and snipers:** M249, FAMAS, M4A1-S, SG 553, SSG 08, SCAR-20
 - **Other:** Zeus x27 and all six grenades
 - **Players:** the T and CT player models
 
-The Glock-18 is the T starting pistol, so it's the one you'll notice most.
+If a new model comes out huge, tiny or pointing the wrong way, set `scale`,
+`forward` and `up` for it in `public/config/models.js`. The Glock needed
+`forward: '-x'` and `scale: 8.7` because it was exported lying sideways and
+exactly 1 unit long.
 
 1. Name the file after the weapon's id and put it in `source-models/weapons/`.
    For example, `m4a1s.glb` or `glock.glb`. The list of ids is in
