@@ -17,7 +17,7 @@ import { IN } from './usercmd.js';
 const DEG = Math.PI / 180;
 const MAX_CLIP_PLANES = 5;
 const NON_JUMP_VELOCITY = 140;
-const DUCK_DELTA = PLAYER.HEIGHT_STAND - PLAYER.HEIGHT_DUCK; // 18
+const DUCK_DELTA = PLAYER.AIR_DUCK_SHIFT; // origin shift when crouching in the air (9)
 const COORD_RESOLUTION = 1 / 32;
 
 /** All the per-player movement state. Plain numbers so it's easy to copy/send. */
@@ -144,18 +144,18 @@ function reduceTimers(ps, dt) {
 }
 
 // --- Crouching ---------------------------------------------------------------
-// On the ground the eyes lower smoothly, then the hull shrinks from the top.
-// In the air the hull shrinks instantly from the BOTTOM (feet tuck up, head
-// stays put) — that's what makes crouch-jumping reach higher boxes.
+// On the ground the eyes lower smoothly over 10 ticks, then the hull shrinks
+// from the top. In the air the hull shrinks at once and your feet come up 9
+// units (CS2) — that's what makes crouch-jumping reach higher boxes.
 function handleDuck(ps, buttons, ctx, dt) {
-  const pressed = (buttons & IN.DUCK) && !(ps.oldButtons & IN.DUCK);
-  if (pressed) ps.duckSpeed = Math.max(PLAYER.DUCK_SPEED_MIN, ps.duckSpeed - PLAYER.DUCK_SPAM_PENALTY);
-  const rate = ps.duckSpeed * dt;
+  const released = !(buttons & IN.DUCK) && (ps.oldButtons & IN.DUCK);
+  if (released) ps.duckSpeed = Math.max(PLAYER.DUCK_SPEED_MIN, ps.duckSpeed - PLAYER.DUCK_SPAM_PENALTY);
+  const rate = ps.duckSpeed * PLAYER.DUCK_RATE_SCALE * dt;
 
   if (buttons & IN.DUCK) {
     if (ps.ducked) { ps.duckAmount = 1; return; }
     if (ps.onGround) {
-      ps.duckAmount = Math.min(1, ps.duckAmount + rate);
+      ps.duckAmount = ps.duckAmount + rate >= 1 - 1e-9 ? 1 : ps.duckAmount + rate; // (0.1 x 10 is 0.9999999)
       if (ps.duckAmount >= 1) ps.ducked = true;
     } else {
       // Keep the eyes exactly where they are while the feet come up.
@@ -179,7 +179,7 @@ function handleDuck(ps, buttons, ctx, dt) {
       }
     }
   }
-  if (!ps.ducked && ps.duckAmount > 0) ps.duckAmount = Math.max(0, ps.duckAmount - rate);
+  if (!ps.ducked && ps.duckAmount > 0) ps.duckAmount = ps.duckAmount - rate <= 1e-9 ? 0 : ps.duckAmount - rate;
 }
 
 // --- Main walk/air loop (Source FullWalkMove) --------------------------------
@@ -191,7 +191,6 @@ function fullWalkMove(ps, buttons, yaw, fmove, smove, maxspeed, ctx, dt, ev) {
   if (ps.onGround) {
     ps.vel[2] = 0;
     friction(ps, dt);
-    staminaSlowdown(ps, dt);
   }
   checkVelocity(ps);
 
@@ -233,9 +232,10 @@ function checkJumpButton(ps, ctx, dt, ev) {
   if (!CVARS.sv_enablebunnyhopping) preventBunnyJumping(ps, ctx);
 
   ps.onGround = false;
+  // Same impulse standing or crouched. The quarter tick of gravity makes the
+  // arc match CS2's measured jump (286.37 u/s after this tick, apex 55.82).
   const J = CVARS.sv_jump_impulse;
-  if (ps.ducked || ps.duckAmount > 0) ps.vel[2] = J;
-  else ps.vel[2] += J;
+  ps.vel[2] = J - CVARS.sv_gravity * dt * 0.25;
 
   // Jumping again right after landing gives a lower jump.
   if (ps.stamina > 0) {
@@ -244,7 +244,7 @@ function checkJumpButton(ps, ctx, dt, ev) {
   }
   ps.stamina = Math.min(CVARS.sv_staminamax, ps.stamina + CVARS.sv_staminajumpcost * J);
 
-  finishGravity(ps, dt); // Source applies this here too (affects jump height)
+  finishGravity(ps, dt); // half a tick of gravity before this tick's move
   ev.jumped = true;
 }
 
@@ -273,16 +273,6 @@ function friction(ps, dt) {
     const s = newspeed / speed;
     ps.vel[0] *= s; ps.vel[1] *= s; ps.vel[2] *= s;
   }
-}
-
-// After landing, stamina briefly slows you down (CS:GO/CS2 landing penalty).
-// The pow() keeps the effect the same at any tick rate (reference 70 fps).
-function staminaSlowdown(ps, dt) {
-  if (ps.stamina <= 0) return;
-  let ratio = (CVARS.sv_staminamax - ps.stamina) / CVARS.sv_staminamax;
-  ratio = Math.pow(ratio, dt / (1 / 70));
-  ps.vel[0] *= ratio;
-  ps.vel[1] *= ratio;
 }
 
 // --- Acceleration --------------------------------------------------------------

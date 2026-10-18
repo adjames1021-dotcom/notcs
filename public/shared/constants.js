@@ -21,11 +21,15 @@ export const CVARS = {
   sv_maxspeed: 320,
   sv_maxvelocity: 3500,
   sv_jump_impulse: 301.993377411544, // sqrt(2 * 800 * 57)
+  // CS2 measured: 286.368 u/s at the end of the jump tick, apex 55.82 units
+  // (memorin.app/mechanics/movement-constants). That's the impulse minus a
+  // quarter tick of gravity at the moment of the jump, then a normal arc.
   sv_stepsize: 18,
   sv_falldamage_scale: 1,
   // When false, jumping caps your speed at 1.1x your max speed (CS default).
   sv_enablebunnyhopping: false,
-  // Stamina: landing / jumping briefly slows you and lowers the next jump.
+  // Stamina: jumping again soon after a jump or landing gives a lower jump.
+  // (CS2 doesn't slow you down when you land from a single jump.)
   sv_staminamax: 80,
   sv_staminajumpcost: 0.08, // TODO: CS2 value; scaled by jump velocity here
   sv_staminalandcost: 0.05, // TODO: CS2 value; scaled by fall velocity here
@@ -48,9 +52,11 @@ export const PLAYER = {
   // makes walking/crouching/heavy weapons accelerate snappily).
   ACCEL_MIN_SCALE: 250, // TODO: verify against CS2
   BUNNYJUMP_MAX_SPEED_FACTOR: 1.1,
-  DUCK_SPEED_IDEAL: 8, // duck amount per second (full crouch in ~0.125 s) TODO: tune
+  DUCK_SPEED_IDEAL: 8,
+  DUCK_RATE_SCALE: 0.8, // 0.8 x 8 = 6.4 per second: a full crouch takes exactly 10 ticks (CS2 measured)
+  AIR_DUCK_SHIFT: 9, // crouching in the air lifts your feet this much (CS2 measured)
   DUCK_SPEED_MIN: 1.5, // duck-spam penalty floor TODO: tune
-  DUCK_SPAM_PENALTY: 2, // subtracted per crouch press TODO: tune
+  DUCK_SPAM_PENALTY: 2, // subtracted each time you let go of crouch (spamming is slower) TODO: tune
   DUCK_SPEED_RECOVERY: 3, // per second back toward ideal TODO: tune
   // Fall damage (CS:GO/CS2 game rules).
   MAX_SAFE_FALL_SPEED: 580, // ~210 units drop

@@ -1,51 +1,52 @@
 // ---------------------------------------------------------------------------
 // hitboxes.js — per-body-part hitboxes (capsules) for a player, and ray tests.
-// The placeholder player model in render/players.js is built to match these.
+// The drawn player model (render/players.js) uses the same skeleton.
 // Coordinates relative to the player's feet, X = facing direction.
 // ---------------------------------------------------------------------------
 
 import { HITGROUP } from './weapons.js';
+import { skeleton } from './skeleton.js';
 
-// [hitgroup, from[x,y,z], to[x,y,z], radius] for a STANDING player.
+// [hitgroup, from joint, to joint, radius]. The joints come from skeleton.js,
+// which the drawn character uses too, so the hitboxes follow the body when it
+// crouches (knees bend) or aims up and down (upper body leans).
 // TODO: tune sizes to match CS2 hitboxes / your player models.
-const STAND = [
-  [HITGROUP.HEAD, [1.0, 0, 62.5], [2.0, 0, 67.5], 4.4],
-  [HITGROUP.NECK, [0.5, 0, 57.5], [1.0, 0, 61.0], 3.0],
-  [HITGROUP.CHEST, [0, 0, 46.5], [0.5, 0, 55.5], 7.6],
-  [HITGROUP.STOMACH, [0, 0, 36.5], [0, 0, 45.5], 7.0],
-  [HITGROUP.LEFTARM, [1.5, 9.5, 55], [13, 5, 45], 2.8],
-  [HITGROUP.RIGHTARM, [1.5, -9.5, 55], [15, -3, 47], 2.8],
-  [HITGROUP.LEFTLEG, [0, 4.6, 3], [0, 4.6, 35], 4.3],
-  [HITGROUP.RIGHTLEG, [0, -4.6, 3], [0, -4.6, 35], 4.3],
+const CAPSULES = [
+  [HITGROUP.HEAD, 'headLow', 'headHigh', 4.4],
+  [HITGROUP.NECK, 'neckLow', 'neckHigh', 3.0],
+  [HITGROUP.CHEST, 'chestLow', 'chestHigh', 7.6],
+  [HITGROUP.STOMACH, 'stomachLow', 'stomachHigh', 7.0],
+  [HITGROUP.LEFTARM, 'shoulderL', 'elbowL', 2.8],
+  [HITGROUP.LEFTARM, 'elbowL', 'handL', 2.6],
+  [HITGROUP.RIGHTARM, 'shoulderR', 'elbowR', 2.8],
+  [HITGROUP.RIGHTARM, 'elbowR', 'handR', 2.6],
+  [HITGROUP.LEFTLEG, 'hipL', 'kneeL', 4.3],
+  [HITGROUP.LEFTLEG, 'kneeL', 'ankleL', 4.3],
+  [HITGROUP.RIGHTLEG, 'hipR', 'kneeR', 4.3],
+  [HITGROUP.RIGHTLEG, 'kneeR', 'ankleR', 4.3],
 ];
-
-const LEG_TOP = 36;
-const DUCK_DROP = 18; // 72 - 54
+const joints = {};
 
 /**
  * World-space capsules for a player.
- * @param pos feet position, yaw degrees, duck 0..1
+ * @param pos feet position, yaw degrees, duck 0..1, pitch degrees (+ = looking down)
  */
-export function playerHitboxes(pos, yaw, duck, out = []) {
+export function playerHitboxes(pos, yaw, duck, out = [], pitch = 0) {
   const y = (yaw * Math.PI) / 180;
   const c = Math.cos(y), s = Math.sin(y);
-  const legScale = (LEG_TOP - DUCK_DROP * duck) / LEG_TOP;
-  const drop = DUCK_DROP * duck;
+  skeleton(duck, pitch, joints);
   const tf = (p, o) => {
-    let z = p[2];
-    // crouching: legs shorten, everything above them moves down
-    z = z <= LEG_TOP ? z * legScale : z - drop;
     o[0] = pos[0] + p[0] * c - p[1] * s;
     o[1] = pos[1] + p[0] * s + p[1] * c;
-    o[2] = pos[2] + z;
+    o[2] = pos[2] + p[2];
     return o;
   };
-  out.length = STAND.length;
-  for (let i = 0; i < STAND.length; i++) {
-    const [group, a, b, r] = STAND[i];
+  out.length = CAPSULES.length;
+  for (let i = 0; i < CAPSULES.length; i++) {
+    const [group, a, b, r] = CAPSULES[i];
     const box = out[i] || (out[i] = { group, a: [0, 0, 0], b: [0, 0, 0], r });
     box.group = group; box.r = r;
-    tf(a, box.a); tf(b, box.b);
+    tf(joints[a], box.a); tf(joints[b], box.b);
   }
   return out;
 }
@@ -98,9 +99,9 @@ export function rayCapsule(start, dir, cap, maxDist, pad = 0) {
 }
 
 /** Closest hitbox a ray hits on one player: { t, group } or null. */
-export function rayPlayer(start, dir, maxDist, pos, yaw, duck, scratch, pad = 0) {
+export function rayPlayer(start, dir, maxDist, pos, yaw, duck, scratch, pad = 0, pitch = 0) {
   if (!rayNearPlayer(start, dir, maxDist, pos, duck)) return null;
-  const caps = playerHitboxes(pos, yaw, duck, scratch);
+  const caps = playerHitboxes(pos, yaw, duck, scratch, pitch);
   let best = null;
   for (const cap of caps) {
     const t = rayCapsule(start, dir, cap, maxDist, pad);

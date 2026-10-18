@@ -144,7 +144,7 @@ export class CollisionWorld {
   /**
    * Pack everything the constructor computed into one binary, so the server
    * can load the map in ~1 ms instead of ~100 ms of CPU (Cloudflare's free
-   * plan only allows 10 ms per request). Made by tools/build-collision.mjs.
+   * plan only allows 10 ms per request). Made by tools/build-map.mjs.
    * Numbers are stored as exact Float64 copies, so a world loaded from this
    * file traces exactly like one built from the .glb (prediction stays exact).
    */

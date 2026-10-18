@@ -3,24 +3,33 @@ main = "src/worker.js"
 compatibility_date = "2025-09-01"
 
 # Runs before every `wrangler dev` and `wrangler deploy` (also on Cloudflare's
-# Git builds): prebuilds the map's collision so lobbies start fast.
+# Git builds): prebuilds the map collision (so lobbies start fast) and radar.
 [build]
-command = "node tools/build-collision.mjs"
+command = "node tools/build-map.mjs"
 
 # Everything in public/ is served as static files (free, not billed).
 [assets]
 directory = "./public"
 binding = "ASSETS"
-run_worker_first = ["/ws/*"]
+run_worker_first = ["/ws/*", "/api/*"]
 
 # One Durable Object per lobby code.
 [[durable_objects.bindings]]
 name = "MATCH"
 class_name = "MatchRoom"
 
+# One Durable Object that lists every open lobby (the lobby finder).
+[[durable_objects.bindings]]
+name = "LOBBIES"
+class_name = "LobbyDirectory"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["MatchRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LobbyDirectory"]
 
 # Ticks of input each player sends per message (2 = 32 messages/s).
 # Cloudflare bills 20 incoming messages as 1 request. If your lobbies use up

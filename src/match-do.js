@@ -5,13 +5,16 @@
 //
 // Staying inside Cloudflare's limits (the free plan allows 10 ms of CPU per
 // request or incoming message):
-//   * the map's collision is prebuilt (tools/build-collision.mjs), so a new
+//   * the map's collision is prebuilt (tools/build-map.mjs), so a new
 //     lobby starts in ~3 ms instead of ~100 ms
 //   * ticks run when players' input arrives (every message refreshes the CPU
 //     allowance), with a timer only as a backup
 //   * the normal WebSocket API is used, not the hibernation API: the 64-tick
 //     loop keeps the object awake anyway, and this way one connection is one
 //     invocation (and one log line) instead of one per incoming message
+//
+// Every lobby is public: it reports itself to the lobby directory
+// (lobbies-do.js) so it shows up in the menu's lobby finder.
 //
 // Keeping the bill low:
 //   * clients send 2 ticks of input per message (8 when dead), and Cloudflare
@@ -29,6 +32,8 @@ import { loadMapGeometry } from '../public/shared/mapLoader.js';
 import { MAP } from '../public/config/map.js';
 
 const COLLISION_FILE = MAP.file.replace(/\.glb$/i, '.collision.bin');
+const MODES = { comp: 'defusal', defusal: 'defusal', casual: 'casual', dm: 'deathmatch' };
+const REPORT_EVERY_MS = 15000; // tell the lobby directory we're here
 
 // The map is shared by every lobby running in the same isolate.
 let worldPromise = null;
@@ -75,6 +80,25 @@ export class MatchRoom {
     this.env = env;
     this.server = null;
     this.lobby = '';
+    this.heartbeat = null;
+    this.reportTimer = null;
+  }
+
+  /** Send our player count etc. to the lobby directory (lobbies-do.js). */
+  report() {
+    if (!this.env.LOBBIES || !this.server) return;
+    const info = { code: this.lobby, ...this.server.summary() };
+    const dir = this.env.LOBBIES.get(this.env.LOBBIES.idFromName('directory'));
+    dir.fetch('https://lobbies/report', { method: 'POST', body: JSON.stringify(info) }).catch((err) => {
+      console.log(`[${this.lobby}] lobby directory unreachable: ${err.message}`);
+    });
+  }
+
+  /** Report soon (joins/leaves arrive in bursts). */
+  reportSoon() {
+    if (this.reportTimer) return;
+    this.reportTimer = setTimeout(() => { this.reportTimer = null; this.report(); }, 1500);
+    if (!this.heartbeat) this.heartbeat = setInterval(() => this.report(), REPORT_EVERY_MS);
   }
 
   async fetch(request) {
@@ -83,7 +107,7 @@ export class MatchRoom {
     }
     const url = new URL(request.url);
     if (!this.server) {
-      const mode = url.searchParams.get('mode') === 'dm' ? 'deathmatch' : 'defusal';
+      const mode = MODES[url.searchParams.get('mode')] || 'defusal';
       const world = await loadWorld(this.env);
       if (!this.server) {
         this.lobby = url.pathname.split('/').pop();
@@ -91,6 +115,12 @@ export class MatchRoom {
           world, map: MAP, mode, timerSlackMs: 40, log: (m) => console.log(`[${this.lobby}] ${m}`),
           cmdsPerMessage: Number(this.env.INPUT_TICKS_PER_MESSAGE) || 2,
         });
+        this.server.onEmpty = () => {
+          // last player left: tell the directory, stop reporting, let the object sleep
+          clearInterval(this.heartbeat); this.heartbeat = null;
+          clearTimeout(this.reportTimer); this.reportTimer = null;
+          this.report();
+        };
         console.log(`[${this.lobby}] lobby started (${mode})`);
       }
     }
@@ -104,6 +134,7 @@ export class MatchRoom {
       },
     };
     const session = this.server.connect(conn);
+    this.reportSoon();
     const opened = Date.now();
     let closed = false;
     socket.addEventListener('message', (e) => session.onMessage(e.data));
@@ -112,6 +143,7 @@ export class MatchRoom {
       closed = true;
       console.log(`[${this.lobby}] socket closed by client: code ${e.code} ${e.reason || ''} after ${Math.round((Date.now() - opened) / 1000)} s`);
       session.onClose();
+      if (this.server.match.connectedCount() > 0) this.reportSoon();
       try { socket.close(1000, 'bye'); } catch { /* already closed */ }
     });
     socket.addEventListener('error', (e) => {
@@ -119,6 +151,7 @@ export class MatchRoom {
       closed = true;
       console.log(`[${this.lobby}] socket error: ${e.message || e.type}`);
       session.onClose();
+      if (this.server.match.connectedCount() > 0) this.reportSoon();
     });
     return new Response(null, { status: 101, webSocket: client });
   }

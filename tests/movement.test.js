@@ -103,16 +103,31 @@ test('walking is silent, running makes footsteps', () => {
   assert.ok(steps >= 6, `steps ${steps}`);
 });
 
-test('jump reaches ~55 units and lands after ~0.7 s', () => {
+test('jump matches CS2: 286.37 u/s after the jump tick, apex 55.82, ~0.73 s in the air', () => {
   const world = makeWorld(floor());
   const ps = spawnOn(world);
   const z0 = ps.pos[2];
   playerMove(ps, cmd(IN.JUMP), { world });
+  assert.ok(Math.abs(ps.vel[2] - 286.368) < 0.01, `end-of-tick velocity ${ps.vel[2]}`);
   let maxZ = ps.pos[2], ticks = 1;
-  while (!ps.onGround && ticks < 200) { playerMove(ps, cmd(0), { world }); maxZ = Math.max(maxZ, ps.pos[2]); ticks++; }
+  while (!ps.onGround && ticks < 200) {
+    const v = ps.vel[2];
+    playerMove(ps, cmd(0), { world });
+    if (!ps.onGround) assert.ok(Math.abs(v - ps.vel[2] - 12.5) < 1e-9, 'gravity takes 12.5 u/s per tick');
+    maxZ = Math.max(maxZ, ps.pos[2]);
+    ticks++;
+  }
   const h = maxZ - z0;
-  assert.ok(h > 53 && h < 58, `jump height ${h}`);
-  assert.ok(ticks > 40 && ticks < 50, `air ticks ${ticks}`);
+  assert.ok(h > 55.6 && h < 55.9, `jump height ${h}`);
+  assert.ok(ticks >= 46 && ticks <= 48, `air ticks ${ticks}`);
+});
+
+test('crouching takes exactly 10 ticks (CS2)', () => {
+  const world = makeWorld(floor());
+  const ps = spawnOn(world);
+  let ticks = 0;
+  while (!ps.ducked && ticks < 50) { playerMove(ps, cmd(IN.DUCK), { world }); ticks++; }
+  assert.equal(ticks, 10);
 });
 
 test('holding jump does not auto-bunnyhop', () => {
@@ -177,16 +192,16 @@ test('crouch-jump reaches a 64 unit box, a normal jump does not', () => {
   }
 });
 
-test('ducking in the air keeps your eyes where they are', () => {
+test('ducking in the air lifts your feet 9 units (CS2)', () => {
   const world = makeWorld(floor());
-  const ps = spawnOn(world);
-  playerMove(ps, cmd(IN.JUMP), { world });
-  run(ps, world, 5, 0);
-  const eyeBefore = ps.pos[2] + eyeHeight(ps) + ps.vel[2] * TICK_DT; // approx next tick
-  playerMove(ps, cmd(IN.DUCK), { world });
-  const eyeAfter = ps.pos[2] + eyeHeight(ps);
-  assert.ok(Math.abs(eyeAfter - eyeBefore) < 2, `eye ${eyeBefore} -> ${eyeAfter}`);
-  assert.equal(ps.ducked, true);
+  const a = spawnOn(world), b = spawnOn(world);
+  for (const ps of [a, b]) { playerMove(ps, cmd(IN.JUMP), { world }); run(ps, world, 5, 0); }
+  playerMove(a, cmd(0), { world });
+  playerMove(b, cmd(IN.DUCK), { world });
+  assert.equal(b.ducked, true);
+  assert.ok(Math.abs(b.pos[2] - a.pos[2] - 9) < 1e-6, `feet ${b.pos[2] - a.pos[2]} higher`);
+  const eyeA = a.pos[2] + eyeHeight(a), eyeB = b.pos[2] + eyeHeight(b);
+  assert.ok(Math.abs(eyeA - eyeB - 9) < 1e-6, `eyes ${eyeA - eyeB} lower`);
 });
 
 test('cannot stand up under a low ceiling', () => {
@@ -237,7 +252,7 @@ test('air strafing gains speed, but jumping caps it at 1.1x max speed', () => {
   assert.ok(speed2d(ps) <= 275.01, `after bhop ${speed2d(ps)}`);
 });
 
-test('landing slows you briefly (stamina), then you recover to full speed', () => {
+test('landing from a single jump does not slow you down (CS2)', () => {
   const world = makeWorld(floor());
   const ps = spawnOn(world);
   run(ps, world, 64, IN.FORWARD);
@@ -245,8 +260,25 @@ test('landing slows you briefly (stamina), then you recover to full speed', () =
   while (!ps.onGround) playerMove(ps, cmd(IN.FORWARD), { world });
   let minSpeed = Infinity;
   for (let i = 0; i < 64; i++) { playerMove(ps, cmd(IN.FORWARD), { world }); minSpeed = Math.min(minSpeed, speed2d(ps)); }
-  assert.ok(minSpeed < 245 && minSpeed > 100, `min speed after landing ${minSpeed}`);
-  assert.ok(speed2d(ps) > 249.9, `recovered ${speed2d(ps)}`);
+  assert.ok(minSpeed > 249.9, `min speed after landing ${minSpeed}`);
+});
+
+test('jumping again right after landing gives a lower jump (stamina)', () => {
+  const world = makeWorld(floor());
+  const height = (ps) => {
+    const z0 = ps.pos[2];
+    let top = z0;
+    playerMove(ps, cmd(IN.JUMP), { world });
+    while (!ps.onGround) { playerMove(ps, cmd(0), { world }); top = Math.max(top, ps.pos[2]); }
+    return top - z0;
+  };
+  const ps = spawnOn(world);
+  const first = height(ps);
+  const second = height(ps); // straight away, still tired from landing
+  run(ps, world, 64, 0);
+  const rested = height(ps);
+  assert.ok(second < first - 3, `second jump ${second} vs ${first}`);
+  assert.ok(Math.abs(rested - first) < 1e-6, `rested jump ${rested}`);
 });
 
 test('simulation is deterministic (prediction == server)', () => {

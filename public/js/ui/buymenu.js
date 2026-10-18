@@ -198,7 +198,7 @@ export class BuyMenu {
     const st = g.roundHud && g.roundHud.state;
     if (!st || st.phase === 'warmup' || g.serverMode === 'deathmatch') return null;
     const elapsed = (g.serverTickEst - st.recvTick) / 64;
-    if (st.phase === 'freeze') return Math.max(0, st.timeLeft - elapsed) + RULES.BUY_TIME;
+    if (st.phase === 'freeze') return Math.max(0, st.timeLeft - elapsed) + (st.buyTime ?? RULES.BUY_TIME);
     if (st.phase === 'live' || st.phase === 'planted') return Math.max(0, st.buyLeft - elapsed);
     return 0;
   }

@@ -21,7 +21,7 @@ import { rayPlayer } from './hitboxes.js';
 import { GrenadeSystem } from './grenades.js';
 import { ItemSystem } from './items.js';
 import { ECONOMY, addMoney, killReward, tryBuy, inBox, buyRecord, refundItem } from './economy.js';
-import { DefusalRules, RULES } from './rules.js';
+import { DefusalRules, RULES, CASUAL_RULES } from './rules.js';
 
 export const TEAM = { NONE: 0, T: 1, CT: 2, SPEC: 3 };
 export const TEAM_NAME = { 0: 'NONE', 1: 'T', 2: 'CT', 3: 'SPEC' };
@@ -41,7 +41,7 @@ export class Match {
   /**
    * @param opts.world     CollisionWorld built from the map
    * @param opts.map       MAP config (spawns, bombsites, ...)
-   * @param opts.mode      'practice' | 'defusal'
+   * @param opts.mode      'defusal' (competitive) | 'casual' | 'deathmatch' | 'practice' | 'sandbox' (tests)
    */
   constructor(opts) {
     this.world = opts.world;
@@ -60,7 +60,9 @@ export class Match {
     this.systems = []; // add-ons (grenades, items, round rules) with optional hooks
     this.grenades = this.addSystem(new GrenadeSystem());
     this.items = this.addSystem(new ItemSystem());
-    this.rules = this.mode === 'defusal' ? this.addSystem(new DefusalRules()) : null;
+    this.rules = this.mode === 'defusal' ? this.addSystem(new DefusalRules(RULES))
+      : this.mode === 'casual' ? this.addSystem(new DefusalRules(CASUAL_RULES)) : null;
+    this.maxPlayers = this.rules ? this.rules.R.MAX_PLAYERS : this.mode === 'deathmatch' ? 16 : MAX_PLAYERS;
     if (this.mode === 'practice') this.setupPractice();
   }
 
@@ -116,7 +118,7 @@ export class Match {
   }
 
   addPlayer({ name, team, token }) {
-    if (this.humanCount() >= MAX_PLAYERS) return null;
+    if (this.humanCount() >= this.maxPlayers) return null;
     const id = this.nextId();
     if (id < 0) return null;
     const p = this.createPlayer(id, name);
@@ -421,6 +423,7 @@ export class Match {
     return {
       pos: [a.pos[0] + (b.pos[0] - a.pos[0]) * f, a.pos[1] + (b.pos[1] - a.pos[1]) * f, a.pos[2] + (b.pos[2] - a.pos[2]) * f],
       yaw: lerpAngle(a.yaw, b.yaw, f),
+      pitch: a.pitch + (b.pitch - a.pitch) * f,
       duck: a.duck + (b.duck - a.duck) * f,
       alive: true,
     };
@@ -429,7 +432,7 @@ export class Match {
   recordHistory() {
     const states = new Map();
     for (const p of this.players.values()) {
-      states.set(p.id, { pos: p.ps.pos.slice(), yaw: p.yaw, duck: p.ps.duckAmount, alive: p.alive });
+      states.set(p.id, { pos: p.ps.pos.slice(), yaw: p.yaw, pitch: p.pitch, duck: p.ps.duckAmount, alive: p.alive });
     }
     this.history.push({ tick: this.tick, states });
     while (this.history.length > LAG_COMP_TICKS + 2) this.history.shift();
@@ -442,7 +445,7 @@ export class Match {
     const targets = [];
     for (const o of this.players.values()) {
       if (o === shooter) continue;
-      const st = this.rewoundState(o, atTick) || { pos: o.ps.pos, yaw: o.yaw, duck: o.ps.duckAmount, alive: o.alive };
+      const st = this.rewoundState(o, atTick) || { pos: o.ps.pos, yaw: o.yaw, pitch: o.pitch, duck: o.ps.duckAmount, alive: o.alive };
       if (!st.alive || !o.alive) continue;
       targets.push({ id: o.id, st });
     }
@@ -450,7 +453,7 @@ export class Match {
       let best = null;
       for (const tg of targets) {
         if (exclude && exclude.has(tg.id)) continue;
-        const h = rayPlayer(start, dir, maxDist, tg.st.pos, tg.st.yaw, tg.st.duck, this._caps, pad);
+        const h = rayPlayer(start, dir, maxDist, tg.st.pos, tg.st.yaw, tg.st.duck, this._caps, pad, tg.st.pitch || 0);
         if (h && (!best || h.t < best.t)) best = { t: h.t, group: h.group, id: tg.id };
       }
       return best;
@@ -687,7 +690,7 @@ export class Match {
   roundInfo() {
     if (!this.rules) return null;
     const r = this.rules.publicRoundState();
-    return { ...r, number: r.round, t: r.scoreT, ct: r.scoreCT, winScore: RULES.WIN_ROUNDS };
+    return { ...r, number: r.round, t: r.scoreT, ct: r.scoreCT, winScore: this.rules.R.WIN_ROUNDS };
   }
 
   /** Scoreboard rows as seen by `viewer` (money only shown for teammates). */
